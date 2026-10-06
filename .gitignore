@@ -18,5 +18,3 @@ wheels/
 .ruff_cache
 
 temp
-
-uv.lock
