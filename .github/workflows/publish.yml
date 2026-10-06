@@ -1,0 +1,90 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pypi-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  release-check:
+    name: Verify release is on master
+    if: github.repository == 'okanyenigun/raggae' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      commit: ${{ steps.verify.outputs.commit }}
+      version: ${{ steps.verify.outputs.version }}
+    steps:
+      # Run the guard from protected master, not from an arbitrary release tag.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: master
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.5.11"
+          python-version: "3.13"
+      - name: Check tag ancestry and package version
+        id: verify
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: uv run --no-project python scripts/ci/check_release.py release --tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
+
+  ci:
+    name: Release CI
+    needs: release-check
+    uses: ./.github/workflows/ci.yml
+    with:
+      source_ref: ${{ needs.release-check.outputs.commit }}
+
+  publish:
+    name: Publish verified distributions
+    needs: [release-check, ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/project/raggae/${{ needs.release-check.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      # No source checkout, dependency installation, or builds in this job.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: python-distributions
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@106e0b0b7c337fa67ed433972f777c6357f78598 # v1.13.0
+
+  verify-publication:
+    name: Verify the public PyPI release
+    needs: [release-check, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.release-check.outputs.commit }}
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: python-distributions
+          path: dist
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: "0.5.11"
+          python-version: "3.13"
+      - name: Compare PyPI file hashes and test a fresh installation
+        env:
+          RELEASE_VERSION: ${{ needs.release-check.outputs.version }}
+        run: |
+          uv run --no-project python scripts/ci/check_release.py pypi --version "$RELEASE_VERSION"
+          uv venv --python 3.13 "$RUNNER_TEMP/pypi-smoke"
+          uv pip install --no-cache --index-url https://pypi.org/simple/ --python "$RUNNER_TEMP/pypi-smoke/bin/python" "raggae==$RELEASE_VERSION"
+          "$RUNNER_TEMP/pypi-smoke/bin/python" -I scripts/ci/check_release.py smoke --version "$RELEASE_VERSION"
