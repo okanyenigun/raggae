@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+.env
+.DS_Store
+*.pdf
+
+.claude
+.pytest_cache
+.ruff_cache
+
+temp
+
+uv.lock

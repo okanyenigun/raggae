@@ -1,0 +1,1 @@
+"""PDF encryption worker tests."""
