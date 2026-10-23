@@ -151,6 +151,7 @@ def smoke_test(release_version: str) -> None:
     # Call with the fresh environment's python -I, never an editable installation.
     import raggae
     from raggae.documents.validation import Decision, DocumentInspector
+    from raggae.documents.normalization import DocumentNormalizer, StrictTextEncodingNormalizer
 
     if installed_version("raggae") != release_version:
         raise ValueError("The installed package has a different version.")
@@ -158,12 +159,34 @@ def smoke_test(release_version: str) -> None:
         raise ValueError("The smoke test imported a source checkout, not an installed distribution.")
     for module in pkgutil.walk_packages(raggae.__path__, raggae.__name__ + "."):
         importlib.import_module(module.name)
+    normalized = StrictTextEncodingNormalizer().normalize(
+        source=b"Caf\xe9", output_path=None, declared_encoding="cp1252",
+    )
+    if (
+        normalized.outcome != "changed" or normalized.artifact is None
+        or normalized.artifact.read_bytes() != "Café".encode("utf-8")
+    ):
+        raise ValueError("The installed text normalizer did not produce UTF-8 text.")
     with TemporaryDirectory() as directory:
         path = Path(directory) / "document.txt"
         path.write_text("Ordinary document text.\n", encoding="utf-8")
         report = DocumentInspector().validate(path)
         if report.decision is not Decision.ACCEPT or report.facts["detected_format"] != "txt":
             raise ValueError("The installed inspector did not accept an ordinary text document.")
+        csv_source = Path(directory) / "source.csv"
+        csv_destination = Path(directory) / "normalized.csv"
+        original = b"name,note\nCaf\xe9,=1+1\n"
+        csv_source.write_bytes(original)
+        result = DocumentNormalizer().normalize(
+            source=csv_source, output_path=csv_destination, declared_encoding="cp1252",
+        )
+        if (
+            result.outcome != "changed" or result.artifact is None
+            or result.artifact.path != csv_destination
+            or result.artifact.read_bytes() != "name,note\nCafé,'=1+1\n".encode("utf-8")
+            or len(result.report.steps) != 2 or csv_source.read_bytes() != original
+        ):
+            raise ValueError("The installed coordinator did not normalize a CSV working copy.")
 
 
 def main() -> None:
