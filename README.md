@@ -56,5 +56,3 @@ active-content and metadata removal, and explicit format conversion. The
 `DocumentToHtmlConverter` requires a separately installed Pandoc, and
 `LibreOfficeToPdfConverter` requires LibreOffice. Conversion does not perform
 OCR, and sanitization is not a guarantee that a document is safe for every use.
-
-For development checks and release setup, see [CI/CD documentation](docs/ci-cd.md).
