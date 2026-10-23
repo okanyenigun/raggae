@@ -3,18 +3,29 @@ name: Publish to PyPI
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing published release tag to retry (for example, v0.2.0)
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: pypi-${{ github.event.release.tag_name }}
+  group: pypi-${{ github.event.release.tag_name || inputs.tag }}
   cancel-in-progress: false
 
 jobs:
   release-check:
     name: Verify release is on master
-    if: github.repository == 'okanyenigun/raggae' && !github.event.release.prerelease
+    if: >-
+      github.repository == 'okanyenigun/raggae' &&
+      (
+        (github.event_name == 'release' && !github.event.release.prerelease) ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -31,11 +42,15 @@ jobs:
         with:
           version: "0.5.11"
           python-version: "3.13"
-      - name: Check tag ancestry and package version
+      - name: Check published release, tag ancestry, and package version
         id: verify
         env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: uv run --no-project python scripts/ci/check_release.py release --tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT"
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: >-
+          uv run --no-project python scripts/ci/check_release.py release
+          --tag "$RELEASE_TAG" --require-published-release
+          --github-output "$GITHUB_OUTPUT"
 
   ci:
     name: Release CI
@@ -60,7 +75,8 @@ jobs:
         with:
           name: python-distributions
           path: dist
-      - uses: pypa/gh-action-pypi-publish@106e0b0b7c337fa67ed433972f777c6357f78598 # v1.13.0
+      # This release pin's corresponding GHCR image was verified before use.
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
   verify-publication:
     name: Verify the public PyPI release
