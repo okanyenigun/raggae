@@ -32,7 +32,7 @@ def encoded_pdf(*, pages=2, user=None):
         return output.getvalue()
 
 
-@pytest.mark.parametrize("password", ["open-me", b"open-me", "owner-secret"])
+@pytest.mark.parametrize("password", ["open-me", b"open-me", "owner-secret"])  # ggignore: synthetic PDF fixture passwords.
 @pytest.mark.parametrize("source_kind", ["bytes", "path", "artifact"])
 @pytest.mark.parametrize("disk", [False, True])
 def test_unlocks_to_same_content_without_password(password, source_kind, disk, tmp_path):
@@ -140,7 +140,7 @@ def test_failed_save_discards_partial_output(error, monkeypatch, tmp_path):
 
     monkeypatch.setattr(pikepdf.Pdf, "save", broken_save)
     request = NormalizationRequest(
-        source=data, output_path=tmp_path / "output.pdf", password="open-me",
+        source=data, output_path=tmp_path / "output.pdf", password="open-me",  # ggignore: synthetic PDF fixture password.
     )
     worker = PdfDecryptionNormalizer()
     if isinstance(error, OSError):
@@ -161,7 +161,7 @@ def test_never_overwrites_existing_file(same_source, tmp_path):
     path = tmp_path / "existing.pdf"
     path.write_bytes(original)
     request = NormalizationRequest(
-        source=path if same_source else original, output_path=path, password="open-me",
+        source=path if same_source else original, output_path=path, password="open-me",  # ggignore: synthetic PDF fixture password.
     )
     with pytest.raises(FileExistsError):
         PdfDecryptionNormalizer().normalize(request)
@@ -214,7 +214,7 @@ def test_worker_contract_and_no_secret_stored_on_worker():
 def test_returned_artifact_can_feed_next_call():
     worker = PdfDecryptionNormalizer()
     first = worker.normalize(NormalizationRequest(
-        source=encoded_pdf(user="open-me"), output_path=None, password="open-me",
+        source=encoded_pdf(user="open-me"), output_path=None, password="open-me",  # ggignore: synthetic PDF fixture password.
     ))
     second = worker.normalize(NormalizationRequest(source=first.artifact, output_path=None))
     assert second.outcome == "no_change"

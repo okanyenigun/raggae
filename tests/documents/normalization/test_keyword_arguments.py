@@ -60,7 +60,7 @@ ENTRY_POINTS = (*WORKERS, DocumentNormalizer)
 CASES = (
     (StrictTextEncodingNormalizer, lambda: b"caf\xe9", {"declared_encoding": "cp1252"}),
     (PillowImageOrientationNormalizer, encoded_image, {}),
-    (PdfDecryptionNormalizer, lambda: encoded_pdf(encrypted="open-me"), {"password": "open-me"}),
+    (PdfDecryptionNormalizer, lambda: encoded_pdf(encrypted="open-me"), {"password": "open-me"}),  # ggignore: synthetic PDF fixture password.
     (PdfActiveContentSanitizer, lambda: encoded_pdf(add_all_features), {}),
     (OoxmlActiveContentSanitizer, lambda: package(parts(active=True)), {}),
     (HtmlActiveContentSanitizer, lambda: b"<script>example</script><p>keep</p>", {}),
@@ -272,7 +272,7 @@ def test_automatic_coordinator_has_equivalent_keyword_and_request_flows(disk, tm
 def test_automatic_coordinator_accepts_memory_format_and_password_keywords():
     original = encoded_pdf(add_all_features, encrypted="open-me")
     result = DocumentNormalizer().normalize(
-        source=original, source_format="pdf", password="open-me", output_path=None,
+        source=original, source_format="pdf", password="open-me", output_path=None,  # ggignore: synthetic PDF fixture password.
     )
     assert result.outcome == "changed"
     assert [step.report.outcome for step in result.report.steps] == ["changed"] * 3

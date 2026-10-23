@@ -106,6 +106,24 @@ def test_nested_dropped_elements_and_mismatched_closing():
     assert mismatched.artifact.data == b"<p>Keep</p>"
 
 
+@pytest.mark.parametrize("body,removals", [
+    ("<object><iframe>private</object>", {"embedded_frame": 2}),
+    ("<OBJECT><IFRAME>private</OBJECT>", {"embedded_frame": 2}),
+    ("<object><iframe><embed>private</object>", {"embedded_frame": 3}),
+    (
+        '<object><iframe><script>"</object>"</script></object>',
+        {"embedded_frame": 2, "script": 1},
+    ),
+])
+def test_iframe_nesting_recovery_keeps_sanitizing_following_content(body, removals):
+    # Newer HTMLParser versions must still deliver the outer closing tag.
+    # A closing-tag string inside a script must NOT end suppression early.
+    result = normalize(body + '<p onclick="run()">Keep &amp; café</p>')
+    assert result.outcome == "changed"
+    assert result.artifact.data == "<p>Keep &amp; café</p>".encode("utf-8")
+    assert result.report.removals == {**removals, "event_handler": 1}
+
+
 def test_unclosed_script_discards_remainder_and_can_return_empty_document():
     result = normalize('<script>private<p>still script data')
     assert result.outcome == "changed"
