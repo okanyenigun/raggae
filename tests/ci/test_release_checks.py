@@ -120,6 +120,137 @@ def test_failed_cli_does_not_write_release_outputs(release_repository, tmp_path)
     assert not output.exists()
 
 
+@pytest.fixture
+def published_release():
+    return {
+        "tag_name": "v0.1.1", "draft": False, "prerelease": False,
+        "published_at": "2026-10-23T12:00:00Z",
+    }
+
+
+def test_published_release_is_checked_at_the_expected_repository(published_release, monkeypatch):
+    calls = []
+
+    def response(request, timeout):
+        calls.append((request, timeout))
+        return io.BytesIO(json.dumps(published_release).encode())
+
+    monkeypatch.setattr(checks, "urlopen", response)
+    checks.verify_published_release("v0.1.1")
+    request, timeout = calls[0]
+    assert len(calls) == 1
+    assert request.full_url == "https://api.github.com/repos/okanyenigun/raggae/releases/tags/v0.1.1"
+    assert request.get_header("Accept") == "application/vnd.github+json"
+    assert request.get_header("Authorization") is None
+    assert timeout == 10
+
+
+def test_published_release_can_use_read_only_github_auth(published_release, monkeypatch):
+    def response(request, timeout):
+        assert request.get_header("Authorization") == "Bearer test"
+        return io.BytesIO(json.dumps(published_release).encode())
+
+    monkeypatch.setattr(checks, "urlopen", response)
+    checks.verify_published_release("v0.1.1", token="test")
+
+
+@pytest.mark.parametrize("overrides", [
+    {"tag_name": "v0.1.2"}, {"draft": True}, {"prerelease": True},
+    {"draft": None}, {"prerelease": None}, {"draft": 0}, {"prerelease": 0},
+    {"published_at": None}, {"published_at": ""},
+])
+def test_unpublished_or_nonstable_github_release_is_rejected(published_release, overrides, monkeypatch):
+    data = {**published_release, **overrides}
+    monkeypatch.setattr(checks, "urlopen", lambda *args, **kwargs: io.BytesIO(json.dumps(data).encode()))
+    with pytest.raises(ValueError, match="published, non-prerelease"):
+        checks.verify_published_release("v0.1.1")
+
+
+@pytest.mark.parametrize("data", [None, [], {}, {"tag_name": "v0.1.1"}])
+def test_incomplete_github_release_response_fails_closed(data, monkeypatch):
+    monkeypatch.setattr(checks, "urlopen", lambda *args, **kwargs: io.BytesIO(json.dumps(data).encode()))
+    with pytest.raises(ValueError, match="published, non-prerelease"):
+        checks.verify_published_release("v0.1.1")
+
+
+@pytest.mark.parametrize("tag", ["master", "v0.1.1rc1", "v0.1.1\n", "--help", "v0.1.1;echo BAD"])
+def test_invalid_published_release_tag_never_reaches_github(tag, monkeypatch):
+    def unexpected(*args, **kwargs):
+        pytest.fail("Invalid tag reached GitHub")
+
+    monkeypatch.setattr(checks, "urlopen", unexpected)
+    with pytest.raises(ValueError, match="stable versions"):
+        checks.verify_published_release(tag)
+
+
+def test_missing_github_release_is_not_treated_as_published(monkeypatch):
+    def missing(request, timeout):
+        raise HTTPError(request.full_url, 404, "Not found", {}, None)
+
+    monkeypatch.setattr(checks, "urlopen", missing)
+    with pytest.raises(HTTPError):
+        checks.verify_published_release("v0.1.1")
+
+
+def test_cli_checks_published_release_before_writing_outputs(release_repository, tmp_path, monkeypatch):
+    repository, commit = release_repository
+    run_git(repository, "tag", "v0.1.1")
+    output = tmp_path / "github-output"
+    calls = []
+
+    def verify(tag, token):
+        assert not output.exists()
+        calls.append((tag, token))
+
+    monkeypatch.chdir(repository)
+    monkeypatch.setenv("GITHUB_TOKEN", "test")
+    monkeypatch.setattr(checks, "verify_published_release", verify)
+    monkeypatch.setattr(sys, "argv", [
+        str(SCRIPT), "release", "--tag", "v0.1.1", "--require-published-release",
+        "--github-output", str(output),
+    ])
+    checks.main()
+    assert calls == [("v0.1.1", "test")]
+    assert output.read_text() == f"commit={commit}\nversion=0.1.1\n"
+
+
+def test_cli_unpublished_release_never_writes_outputs(release_repository, tmp_path, monkeypatch):
+    repository, _ = release_repository
+    run_git(repository, "tag", "v0.1.1")
+    output = tmp_path / "github-output"
+
+    def rejected(*args, **kwargs):
+        raise ValueError("Expected an existing published, non-prerelease GitHub release.")
+
+    monkeypatch.chdir(repository)
+    monkeypatch.setattr(checks, "verify_published_release", rejected)
+    monkeypatch.setattr(sys, "argv", [
+        str(SCRIPT), "release", "--tag", "v0.1.1", "--require-published-release",
+        "--github-output", str(output),
+    ])
+    with pytest.raises(ValueError, match="published, non-prerelease"):
+        checks.main()
+    assert not output.exists()
+
+
+def test_cli_unmerged_retry_never_reaches_published_release_check(release_repository, monkeypatch):
+    repository, _ = release_repository
+    run_git(repository, "switch", "-c", "feature")
+    run_git(repository, "commit", "--allow-empty", "-m", "Unmerged release")
+    run_git(repository, "tag", "v0.1.1")
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("Unmerged tag reached the published release check")
+
+    monkeypatch.chdir(repository)
+    monkeypatch.setattr(checks, "verify_published_release", unexpected)
+    monkeypatch.setattr(sys, "argv", [
+        str(SCRIPT), "release", "--tag", "v0.1.1", "--require-published-release",
+    ])
+    with pytest.raises(ValueError, match="not on origin/master"):
+        checks.main()
+
+
 @pytest.mark.parametrize("name", [
     ".env", "raggae/.env.local", ".git/config", ".venv/config", "temp/blog.txt",
     "../secret", "/absolute/secret", "raggae/../../secret", "raggae/__pycache__/module.pyc",

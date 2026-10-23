@@ -5,6 +5,7 @@ import hashlib
 import importlib
 from importlib.metadata import version as installed_version
 import json
+import os
 from pathlib import Path, PurePosixPath
 import pkgutil
 import re
@@ -16,7 +17,7 @@ import time
 import tomllib
 from email.parser import BytesParser
 from urllib.error import HTTPError, URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 import zipfile
 
 
@@ -44,6 +45,32 @@ def verify_release(tag: str, repository: Path) -> tuple[str, str]:
     if project["name"] != "raggae" or project["version"] != tag[1:]:
         raise ValueError("The release tag must match raggae's version in pyproject.toml.")
     return commit, project["version"]
+
+
+def verify_published_release(tag: str, token: str | None = None) -> None:
+    """Require an existing stable GitHub release, including for manual retries."""
+    if not STABLE_TAG.fullmatch(tag):
+        raise ValueError("Release tags must be stable versions such as v0.1.1.")
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "raggae-release-check",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = Request(
+        f"https://api.github.com/repos/okanyenigun/raggae/releases/tags/{tag}",
+        headers=headers,
+    )
+    with urlopen(request, timeout=10) as response:
+        release = json.load(response)
+    if (
+        not isinstance(release, dict)
+        or release.get("tag_name") != tag
+        or release.get("draft") is not False
+        or release.get("prerelease") is not False
+        or not release.get("published_at")
+    ):
+        raise ValueError("Expected an existing published, non-prerelease GitHub release.")
 
 
 def check_file(name: str, content: bytes) -> None:
@@ -194,6 +221,7 @@ def main() -> None:
     commands = parser.add_subparsers(dest="command", required=True)
     release = commands.add_parser("release")
     release.add_argument("--tag", required=True)
+    release.add_argument("--require-published-release", action="store_true")
     release.add_argument("--github-output", type=Path)
     dist = commands.add_parser("dist")
     dist.add_argument("--directory", type=Path, default=Path("dist"))
@@ -205,6 +233,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "release":
         commit, release_version = verify_release(args.tag, Path.cwd())
+        if args.require_published_release:
+            verify_published_release(args.tag, os.environ.get("GITHUB_TOKEN"))
         if args.github_output:
             with args.github_output.open("a", encoding="utf-8") as stream:
                 stream.write(f"commit={commit}\nversion={release_version}\n")
