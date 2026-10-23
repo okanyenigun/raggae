@@ -144,14 +144,14 @@ def test_strict_open_does_not_repair_cross_reference():
 def test_password_required_pdf_must_use_access_worker_first(tmp_path):
     data = encoded_pdf(user="open-me")
     result = PdfMetadataSanitizer().normalize(NormalizationRequest(
-        source=data, output_path=tmp_path / "output.pdf", password="open-me",
+        source=data, output_path=tmp_path / "output.pdf", password="open-me",  # ggignore: synthetic PDF fixture password.
     ))
     assert result.artifact is None
     assert result.report.issues[0].code == PdfMetadataFinding.PASSWORD_REQUIRED
     assert "open-me" not in result.report.model_dump_json()
     assert not list(tmp_path.iterdir())
     accessible = PdfDecryptionNormalizer().normalize(NormalizationRequest(
-        source=data, output_path=None, password="open-me",
+        source=data, output_path=None, password="open-me",  # ggignore: synthetic PDF fixture password.
     ))
     sanitized = PdfMetadataSanitizer().normalize(NormalizationRequest(source=accessible.artifact, output_path=None))
     assert sanitized.outcome == "changed"

@@ -9,6 +9,14 @@ from .models import HtmlActiveContentCategory
 class HtmlRewriter(HTMLParser):
     """Small removal profile; deliberately not a browser-equivalent parser."""
 
+    # Newer HTMLParser versions treat iframe bodies as raw text. This profile
+    # needs their nested tags and ancestor end tags to reach our drop stack,
+    # including recovery when an outer object closes an unclosed iframe.
+    # Keep the parser's raw-text handling for scripts, styles, and other tags.
+    CDATA_CONTENT_ELEMENTS = tuple(
+        tag for tag in HTMLParser.CDATA_CONTENT_ELEMENTS if tag != "iframe"
+    )
+
     def __init__(self) -> None:
         super().__init__(convert_charrefs=False)
         self.parts: list[str] = []

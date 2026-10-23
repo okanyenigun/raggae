@@ -225,7 +225,7 @@ def test_malformed_annotation_collection_at_removal_boundary():
 
 def test_password_is_not_used_to_duplicate_pdf_access_work(tmp_path):
     result = PdfActiveContentSanitizer().normalize(NormalizationRequest(
-        source=encoded_pdf(add_all_features, encrypted="open-me"), password="open-me",
+        source=encoded_pdf(add_all_features, encrypted="open-me"), password="open-me",  # ggignore: synthetic PDF fixture password.
         output_path=tmp_path / "output.pdf",
     ))
     assert result.artifact is None
@@ -236,7 +236,7 @@ def test_password_is_not_used_to_duplicate_pdf_access_work(tmp_path):
 
 def test_pdf_access_output_feeds_sanitizer():
     accessible = PdfDecryptionNormalizer().normalize(NormalizationRequest(
-        source=encoded_pdf(add_all_features, encrypted="open-me"), password="open-me",
+        source=encoded_pdf(add_all_features, encrypted="open-me"), password="open-me",  # ggignore: synthetic PDF fixture password.
         output_path=None,
     ))
     result = PdfActiveContentSanitizer().normalize(NormalizationRequest(
