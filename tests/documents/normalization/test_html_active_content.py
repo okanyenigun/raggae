@@ -193,8 +193,8 @@ def test_text_normalization_can_prepare_legacy_html():
 def test_idempotent_and_shared_settings_ignored():
     worker = HtmlActiveContentSanitizer()
     first = worker.normalize(NormalizationRequest(
-        source=b'<p onclick="run()">Keep</p>', output_path=None,
-        declared_encoding="ascii", password="unused-secret",
+        source=Artifact(data=b'<p onclick="run()">Keep</p>', password="unused-secret"), output_path=None,
+        declared_encoding="ascii",
     ))
     second = worker.normalize(NormalizationRequest(source=first.artifact, output_path=None))
     assert second.outcome == "no_change"

@@ -109,18 +109,19 @@ def test_intermediate_requests_preserve_settings_without_exposing_destination(tm
         assert request.output_path is None
         assert request.declared_encoding == "cp1252"
         assert request.target_encoding == "utf-16"
-        assert request.password == b"secret"
+        expected = "secret" if request.source.data == b"original" else None
+        assert request.source.password == expected
         assert not destination.exists()
         assert not list(tmp_path.glob(".raggae-*.part"))
 
     first = RecordingWorker("first", before=check_request)
     second = RecordingWorker("second", before=check_request)
     request = NormalizationRequest(
-        source=b"original",
+        source=Artifact(data=b"original", password="secret"),
         output_path=destination,
         declared_encoding="cp1252",
         target_encoding="utf-16",
-        password=b"secret",
+
     )
     result = DocumentNormalizer(workers=(first, second)).normalize(request)
 
@@ -131,7 +132,7 @@ def test_intermediate_requests_preserve_settings_without_exposing_destination(tm
     assert request.output_path == destination
     assert request.declared_encoding == "cp1252"
     assert request.target_encoding == "utf-16"
-    assert request.password == b"secret"
+    assert request.source.password == "secret"
     assert destination.read_bytes() == b"original!!"
     assert "secret" not in result.report.model_dump_json()
 

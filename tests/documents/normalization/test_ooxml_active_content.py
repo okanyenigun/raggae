@@ -188,7 +188,7 @@ def test_only_exact_macro_part_names_removed():
 def test_idempotent_and_shared_settings_ignored():
     worker = OoxmlActiveContentSanitizer()
     first = worker.normalize(NormalizationRequest(
-        source=package(parts(active=True)), output_path=None, password="unused-secret", declared_encoding="ascii",
+        source=Artifact(data=package(parts(active=True)), password="unused-secret"), output_path=None,  declared_encoding="ascii",
     ))
     second = worker.normalize(NormalizationRequest(source=first.artifact, output_path=None))
     assert second.outcome == "no_change"

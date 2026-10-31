@@ -32,20 +32,20 @@ def encoded_pdf(*, pages=2, user=None):
         return output.getvalue()
 
 
-@pytest.mark.parametrize("password", ["open-me", b"open-me", "owner-secret"])  # ggignore: synthetic PDF fixture passwords.
+@pytest.mark.parametrize("password", ["open-me", "owner-secret"])  # ggignore: synthetic PDF fixture passwords.
 @pytest.mark.parametrize("source_kind", ["bytes", "path", "artifact"])
 @pytest.mark.parametrize("disk", [False, True])
 def test_unlocks_to_same_content_without_password(password, source_kind, disk, tmp_path):
     original = encoded_pdf(pages=3, user="open-me")
-    source = original
+    source = Artifact(data=original, password=password)
     if source_kind == "path":
         path = tmp_path / "source.bin"  # The filename does not select the format.
         path.write_bytes(original)
-        source = str(path)
+        source = Artifact(path=str(path), password=password)
     elif source_kind == "artifact":
-        source = Artifact(data=original)
+        source = Artifact(data=original, password=password)
     destination = tmp_path / "unlocked.pdf" if disk else None
-    request = NormalizationRequest(source=source, output_path=destination, password=password)
+    request = NormalizationRequest(source=source, output_path=destination)
     result = PdfDecryptionNormalizer().normalize(request)
     assert type(result) is NormalizationResult
     assert isinstance(result.report, PdfAccessReport)
@@ -56,6 +56,8 @@ def test_unlocks_to_same_content_without_password(password, source_kind, disk, t
     assert result.report.issues == ()
     assert request.source.read_bytes() == original
     assert result.artifact.path == destination
+    assert result.artifact.password is None
+    assert request.source.password == password
     with pikepdf.Pdf.open(BytesIO(result.artifact.read_bytes()), attempt_recovery=False) as actual:
         assert not actual.is_encrypted
         assert len(actual.pages) == 3
@@ -72,10 +74,9 @@ def test_unlocks_to_same_content_without_password(password, source_kind, disk, t
 @pytest.mark.parametrize("user", [None, ""])
 @pytest.mark.parametrize("disk", [False, True])
 def test_accessible_pdf_returns_original(user, disk, tmp_path):
-    original = Artifact(data=encoded_pdf(user=user))
+    original = Artifact(data=encoded_pdf(user=user), password="ignored-secret")
     result = PdfDecryptionNormalizer().normalize(NormalizationRequest(
         source=original, output_path=tmp_path / "unused.pdf" if disk else None,
-        password="ignored-secret",
     ))
     assert result.outcome == "no_change"
     assert result.artifact is original
@@ -85,11 +86,11 @@ def test_accessible_pdf_returns_original(user, disk, tmp_path):
     assert not list(tmp_path.iterdir())
 
 
-@pytest.mark.parametrize("password", [None, "", b"", "wrong-secret", b"wrong-secret"])
+@pytest.mark.parametrize("password", [None, "", "wrong-secret"])
 @pytest.mark.parametrize("disk", [False, True])
 def test_missing_and_wrong_passwords(password, disk, tmp_path):
     request = NormalizationRequest(
-        source=encoded_pdf(user="open-me"), password=password,
+        source=Artifact(data=encoded_pdf(user="open-me"), password=password),
         output_path=tmp_path / "output.pdf" if disk else None,
     )
     result = PdfDecryptionNormalizer().normalize(request)
@@ -107,7 +108,7 @@ def test_missing_and_wrong_passwords(password, disk, tmp_path):
 @pytest.mark.parametrize("data", [b"", b"not a PDF", b"%PDF-1.7\ninvalid"])
 def test_malformed_input_returns_no_output(data, tmp_path):
     result = PdfDecryptionNormalizer().normalize(NormalizationRequest(
-        source=data, output_path=tmp_path / "output.pdf", password="secret",
+        source=Artifact(data=data, password="secret"), output_path=tmp_path / "output.pdf",
     ))
     assert result.outcome == "failed"
     assert result.artifact is None
@@ -140,7 +141,7 @@ def test_failed_save_discards_partial_output(error, monkeypatch, tmp_path):
 
     monkeypatch.setattr(pikepdf.Pdf, "save", broken_save)
     request = NormalizationRequest(
-        source=data, output_path=tmp_path / "output.pdf", password="open-me",  # ggignore: synthetic PDF fixture password.
+        source=Artifact(data=data, password="open-me"), output_path=tmp_path / "output.pdf",   # ggignore: synthetic PDF fixture password.
     )
     worker = PdfDecryptionNormalizer()
     if isinstance(error, OSError):
@@ -161,33 +162,34 @@ def test_never_overwrites_existing_file(same_source, tmp_path):
     path = tmp_path / "existing.pdf"
     path.write_bytes(original)
     request = NormalizationRequest(
-        source=path if same_source else original, output_path=path, password="open-me",  # ggignore: synthetic PDF fixture password.
+        source=Artifact(path=path, password="open-me") if same_source else Artifact(data=original, password="open-me"),
+        output_path=path,
     )
     with pytest.raises(FileExistsError):
         PdfDecryptionNormalizer().normalize(request)
     assert path.read_bytes() == original
 
 
-@pytest.mark.parametrize("password", [123, True, bytearray(b"secret"), object()])
+@pytest.mark.parametrize("password", [123, True, b"secret", bytearray(b"secret"), object()])
 def test_invalid_password_type_rejected_before_io(password):
     with pytest.raises(TypeError, match="password"):
-        NormalizationRequest(source="does-not-exist.pdf", output_path=None, password=password)
+        NormalizationRequest(source=Artifact(path="does-not-exist.pdf", password=password), output_path=None)
 
 
-@pytest.mark.parametrize("password", [" secret with spaces ", b" secret with spaces "])
+@pytest.mark.parametrize("password", [" secret with spaces ", ""])
 def test_request_hides_password_and_preserves_exact_value(password):
-    request = NormalizationRequest(source=b"data", output_path=None, password=password)
-    assert request.password == password
+    request = NormalizationRequest(source=Artifact(data=b"data", password=password), output_path=None)
+    assert request.source.password == password
     assert "secret" not in repr(request)
     assert "password=" not in repr(request)
-    assert replace(request, source=Artifact(data=b"new")).password == password
+    assert replace(request, source=Artifact(data=b"new")).source.password is None
     with pytest.raises(FrozenInstanceError):
-        request.password = "changed"
+        request.source.password = "changed"
 
 
 def test_other_worker_ignores_password():
     result = StrictTextEncodingNormalizer().normalize(NormalizationRequest(
-        source=b"hello", output_path=None, password="unused-secret",
+        source=Artifact(data=b"hello", password="unused-secret"), output_path=None,
     ))
     assert result.outcome == "no_change"
     assert "unused-secret" not in repr(result)
@@ -214,7 +216,7 @@ def test_worker_contract_and_no_secret_stored_on_worker():
 def test_returned_artifact_can_feed_next_call():
     worker = PdfDecryptionNormalizer()
     first = worker.normalize(NormalizationRequest(
-        source=encoded_pdf(user="open-me"), output_path=None, password="open-me",  # ggignore: synthetic PDF fixture password.
+        source=Artifact(data=encoded_pdf(user="open-me"), password="open-me"), output_path=None,   # ggignore: synthetic PDF fixture password.
     ))
     second = worker.normalize(NormalizationRequest(source=first.artifact, output_path=None))
     assert second.outcome == "no_change"
@@ -226,7 +228,7 @@ def test_independent_calls_share_no_password_state():
     data = encoded_pdf(user="open-me")
 
     def run(password):
-        return worker.normalize(NormalizationRequest(source=data, output_path=None, password=password)).outcome
+        return worker.normalize(NormalizationRequest(source=Artifact(data=data, password=password), output_path=None)).outcome
 
     with ThreadPoolExecutor(max_workers=3) as pool:
         results = list(pool.map(run, ["open-me", "wrong", None] * 3))

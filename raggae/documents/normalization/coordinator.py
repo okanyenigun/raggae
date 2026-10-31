@@ -8,7 +8,6 @@ import re
 from tempfile import mkdtemp
 from typing import BinaryIO, Unpack, overload
 from pydantic import BaseModel
-from .artifacts import Artifact
 from .base import NormalizationWorker
 from .format_conversion import (
     DocumentToHtmlConverter,
@@ -51,10 +50,14 @@ class DocumentNormalizer:
         self._intermediate_dir = (
             None if intermediate_dir is None else require_path(intermediate_dir)
         )
-        if step_output_paths is not None and not isinstance(step_output_paths, (tuple, list)):
+        if step_output_paths is not None and not isinstance(
+            step_output_paths, (tuple, list)
+        ):
             raise TypeError("step_output_paths must be a tuple, list, or None")
         self._step_output_paths = (
-            None if step_output_paths is None else tuple(
+            None
+            if step_output_paths is None
+            else tuple(
                 None if path is None else require_path(path)
                 for path in step_output_paths
             )
@@ -96,10 +99,14 @@ class DocumentNormalizer:
                     destination = self._step_output_paths[index - 1]
                 elif self._intermediate_dir is not None:
                     if run_directory is None:
-                        run_directory = Path(mkdtemp(prefix="run-", dir=self._intermediate_dir))
+                        run_directory = Path(
+                            mkdtemp(prefix="run-", dir=self._intermediate_dir)
+                        )
                     # The report identifies the actual output format after the
                     # worker runs. Until then, use an extension-free filename.
-                    destination = run_directory / self._automatic_stem(index, worker.name)
+                    destination = run_directory / self._automatic_stem(
+                        index, worker.name
+                    )
                     automatic_path = True
                 else:
                     destination = None
@@ -112,20 +119,28 @@ class DocumentNormalizer:
                 if result.outcome != "failed":
                     assert result.artifact is not None
                     current = result.artifact
-                    source_format = self._output_format(worker, result.report, source_format)
-                    if automatic_path and result.outcome == "changed" and current.path == destination:
+                    source_format = self._output_format(
+                        worker, result.report, source_format
+                    )
+                    if (
+                        automatic_path
+                        and result.outcome == "changed"
+                        and current.path == destination
+                    ):
                         assert destination is not None
                         named_path = destination.with_suffix("." + source_format)
                         # Complete bytes only, without overwriting a file even
                         # if another process creates the named destination.
                         os.link(destination, named_path)
                         destination.unlink()
-                        current = Artifact(path=named_path)
+                        current = replace(current, path=named_path)
                 steps.append(
                     NormalizationStepReport(
                         worker=worker.name,
                         report=result.report,
-                        output_path=current.path if result.outcome == "changed" else None,
+                        output_path=current.path
+                        if result.outcome == "changed"
+                        else None,
                     )
                 )
                 if result.outcome == "failed":
@@ -145,7 +160,9 @@ class DocumentNormalizer:
             if request.output_path is None:
                 return NormalizationResult(artifact=current, report=report)
 
-            def publish(source: BinaryIO, output: BinaryIO) -> DocumentNormalizationReport:
+            def publish(
+                source: BinaryIO, output: BinaryIO
+            ) -> DocumentNormalizationReport:
                 while chunk := source.read(64 * 1024):
                     write_all_bytes(output, chunk)
                 return report
@@ -153,7 +170,12 @@ class DocumentNormalizer:
             published_report, artifact = self._io_handler.execute(
                 source=current, output_path=request.output_path, transform=publish
             )
-            return NormalizationResult(artifact=artifact, report=published_report)
+            return NormalizationResult(
+                artifact=None
+                if artifact is None
+                else replace(artifact, password=current.password),
+                report=published_report,
+            )
         finally:
             if run_directory is not None:
                 # Only remove an empty directory created by this call. Completed
@@ -164,13 +186,18 @@ class DocumentNormalizer:
                     if error.errno not in (errno.ENOTEMPTY, errno.EEXIST, errno.ENOENT):
                         raise
 
-    def _validate_step_paths(self, request: NormalizationRequest, worker_count: int) -> None:
+    def _validate_step_paths(
+        self, request: NormalizationRequest, worker_count: int
+    ) -> None:
         if self._step_output_paths is None:
             return
         if len(self._step_output_paths) != worker_count:
-            raise ValueError("step_output_paths must have one entry for each selected worker")
+            raise ValueError(
+                "step_output_paths must have one entry for each selected worker"
+            )
         forbidden = {
-            path.resolve() for path in (request.source.path, request.output_path)
+            path.resolve()
+            for path in (request.source.path, request.output_path)
             if path is not None
         }
         seen: set[Path] = set()
@@ -179,14 +206,20 @@ class DocumentNormalizer:
                 continue
             canonical = path.resolve()
             if canonical in seen or canonical in forbidden:
-                raise ValueError("step_output_paths must be distinct from each other, the source, and the final destination")
+                raise ValueError(
+                    "step_output_paths must be distinct from each other, the source, and the final destination"
+                )
             seen.add(canonical)
             if os.path.lexists(path):
                 raise FileExistsError(f"destination already exists: {path}")
             if not path.parent.exists():
-                raise FileNotFoundError(f"destination parent does not exist: {path.parent}")
+                raise FileNotFoundError(
+                    f"destination parent does not exist: {path.parent}"
+                )
             if not path.parent.is_dir():
-                raise NotADirectoryError(f"destination parent is not a directory: {path.parent}")
+                raise NotADirectoryError(
+                    f"destination parent is not a directory: {path.parent}"
+                )
 
     @staticmethod
     def _automatic_stem(index: int, worker_name: str) -> str:
@@ -200,16 +233,31 @@ class DocumentNormalizer:
     ) -> str:
         # Naming is coordination, not a new requirement on worker protocols.
         # Reported image/package formats take precedence over input extensions.
-        if isinstance(worker, (
-            PdfDecryptionNormalizer, PdfActiveContentSanitizer,
-            PdfMetadataSanitizer, PillowImageToPdfConverter, LibreOfficeToPdfConverter,
-        )):
+        if isinstance(
+            worker,
+            (
+                PdfDecryptionNormalizer,
+                PdfActiveContentSanitizer,
+                PdfMetadataSanitizer,
+                PillowImageToPdfConverter,
+                LibreOfficeToPdfConverter,
+            ),
+        ):
             return "pdf"
-        if isinstance(worker, (HtmlActiveContentSanitizer, HtmlMetadataSanitizer, DocumentToHtmlConverter)):
+        if isinstance(
+            worker,
+            (
+                HtmlActiveContentSanitizer,
+                HtmlMetadataSanitizer,
+                DocumentToHtmlConverter,
+            ),
+        ):
             return "html"
         if isinstance(worker, CsvFormulaSanitizer):
             return "csv"
-        if isinstance(worker, (PillowImageOrientationNormalizer, ImageMetadataSanitizer)):
+        if isinstance(
+            worker, (PillowImageOrientationNormalizer, ImageMetadataSanitizer)
+        ):
             value = getattr(report, "image_format", None)
         elif isinstance(worker, (OoxmlActiveContentSanitizer, OoxmlMetadataSanitizer)):
             value = getattr(report, "document_format", None)
@@ -219,7 +267,9 @@ class DocumentNormalizer:
             return "bin"
         if not isinstance(value, str):
             return "bin"
-        value = {"jpeg": "jpg", "tif": "tiff", "markdown": "md"}.get(value.casefold(), value.casefold())
+        value = {"jpeg": "jpg", "tif": "tiff", "markdown": "md"}.get(
+            value.casefold(), value.casefold()
+        )
         return value if re.fullmatch(r"[a-z0-9]{1,16}", value) else "bin"
 
     @staticmethod

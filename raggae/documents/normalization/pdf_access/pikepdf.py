@@ -39,12 +39,12 @@ class PdfDecryptionNormalizer:
         report, artifact = self._io_handler.execute(
             source=request.source,
             output_path=request.output_path,
-            transform=partial(self._transform, password=request.password),
+            transform=partial(self._transform, password=request.source.password),
         )
         return NormalizationResult(artifact=artifact, report=report)
 
     def _transform(
-        self, source: BinaryIO, output: BinaryIO, *, password: str | bytes | None
+        self, source: BinaryIO, output: BinaryIO, *, password: str | None
     ) -> PdfAccessReport:
         try:
             document = self._open(source, password="")
@@ -68,9 +68,9 @@ class PdfDecryptionNormalizer:
                 )
 
     def _unlock(
-        self, source: BinaryIO, output: BinaryIO, password: str | bytes | None
+        self, source: BinaryIO, output: BinaryIO, password: str | None
     ) -> PdfAccessReport:
-        if password is None or password in ("", b""):
+        if password is None or password == "":
             return self._failure(
                 PdfAccessFinding.PASSWORD_REQUIRED,
                 "PDF requires a non-empty password.",
@@ -122,7 +122,7 @@ class PdfDecryptionNormalizer:
         )
 
     @staticmethod
-    def _open(source: BinaryIO, *, password: str | bytes) -> pikepdf.Pdf:
+    def _open(source: BinaryIO, *, password: str) -> pikepdf.Pdf:
         return pikepdf.Pdf.open(
             source,
             password=password,

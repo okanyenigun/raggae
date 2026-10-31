@@ -178,7 +178,7 @@ def test_property_payload_not_parsed_when_whole_part_is_removed():
 
 def test_idempotence_and_shared_settings_ignored():
     worker = OoxmlMetadataSanitizer()
-    first = worker.normalize(NormalizationRequest(source=package(parts()), output_path=None, password="unused-secret", declared_encoding="ascii"))
+    first = worker.normalize(NormalizationRequest(source=Artifact(data=package(parts()), password="unused-secret"), output_path=None,  declared_encoding="ascii"))
     second = worker.normalize(NormalizationRequest(source=first.artifact, output_path=None))
     assert second.outcome == "no_change"
     assert second.artifact is first.artifact

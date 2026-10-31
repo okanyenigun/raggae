@@ -147,8 +147,8 @@ def test_text_worker_can_prepare_legacy_html():
 def test_idempotent_and_shared_settings_ignored():
     worker = HtmlMetadataSanitizer()
     first = worker.normalize(NormalizationRequest(
-        source=b'<meta name="author"><p>Keep</p>', output_path=None,
-        password="unused-secret", declared_encoding="ascii",
+        source=Artifact(data=b'<meta name="author"><p>Keep</p>', password="unused-secret"), output_path=None,
+         declared_encoding="ascii",
     ))
     second = worker.normalize(NormalizationRequest(source=first.artifact, output_path=None))
     assert second.outcome == "no_change"

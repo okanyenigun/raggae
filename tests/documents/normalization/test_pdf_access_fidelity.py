@@ -254,15 +254,15 @@ def content_snapshot(data: bytes, password: str = "") -> dict:
 @pytest.mark.parametrize("source_kind", ["path", "bytes", "artifact"])
 @pytest.mark.parametrize("disk", [False, True])
 def test_unlock_preserves_rich_document_content(encrypted_fixture, password, source_kind, disk, tmp_path):
-    source = encrypted_fixture
+    source = Artifact(data=encrypted_fixture, password=password)
     if source_kind == "path":
-        source = tmp_path / "original.pdf"
-        source.write_bytes(encrypted_fixture)
+        path = tmp_path / "original.pdf"
+        path.write_bytes(encrypted_fixture)
+        source = Artifact(path=path, password=password)
     elif source_kind == "artifact":
-        source = Artifact(data=encrypted_fixture)
+        source = Artifact(data=encrypted_fixture, password=password)
     request = NormalizationRequest(
         source=source, output_path=tmp_path / "unlocked.pdf" if disk else None,
-        password=password,
     )
     before = content_snapshot(encrypted_fixture, password)
     assert len(before["pages"]) == 2
@@ -300,7 +300,7 @@ def test_unlock_preserves_every_rendered_pixel(encrypted_fixture, password, tmp_
     original = tmp_path / "original.pdf"
     original.write_bytes(encrypted_fixture)
     result = PdfDecryptionNormalizer().normalize(NormalizationRequest(
-        source=original, output_path=tmp_path / "unlocked.pdf", password=password,
+        source=Artifact(path=original, password=password), output_path=tmp_path / "unlocked.pdf",
     ))
     assert result.outcome == "changed"
     before = render_pages(original, tmp_path / "before", USER_PASSWORD)

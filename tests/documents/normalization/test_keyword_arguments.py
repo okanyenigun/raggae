@@ -60,7 +60,7 @@ ENTRY_POINTS = (*WORKERS, DocumentNormalizer)
 CASES = (
     (StrictTextEncodingNormalizer, lambda: b"caf\xe9", {"declared_encoding": "cp1252"}),
     (PillowImageOrientationNormalizer, encoded_image, {}),
-    (PdfDecryptionNormalizer, lambda: encoded_pdf(encrypted="open-me"), {"password": "open-me"}),  # ggignore: synthetic PDF fixture password.
+    (PdfDecryptionNormalizer, lambda: encoded_pdf(encrypted="open-me"), {}),
     (PdfActiveContentSanitizer, lambda: encoded_pdf(add_all_features), {}),
     (OoxmlActiveContentSanitizer, lambda: package(parts(active=True)), {}),
     (HtmlActiveContentSanitizer, lambda: b"<script>example</script><p>keep</p>", {}),
@@ -107,6 +107,8 @@ def test_every_worker_has_equivalent_request_and_keyword_results(
     original_path = tmp_path / "original.bin"
     original_path.write_bytes(original)
     source = original_path if file_source else original
+    if worker_type is PdfDecryptionNormalizer:
+        source = Artifact(path=original_path, password="open-me") if file_source else Artifact(data=original, password="open-me")
     worker = worker_type()
     request = NormalizationRequest(
         source=source, output_path=tmp_path / "request-output.bin" if disk else None,
@@ -167,10 +169,10 @@ def test_every_entry_point_uses_shared_resolution_for_all_common_fields(entry_po
 
     monkeypatch.setattr(module, "resolve_request", record_resolution)
     monkeypatch.setattr(SharedInputOutputHandler, "execute", no_change_io)
-    source = Artifact(data=b"text")
+    source = Artifact(data=b"text", password=" exact secret ")
     arguments = {
         "source": source, "output_path": None, "declared_encoding": " cp1252 ",
-        "target_encoding": "utf-16", "password": b" exact secret ",
+        "target_encoding": "utf-16",
         "source_format": " .TXT ",
     }
     request = NormalizationRequest(**arguments)
@@ -185,7 +187,8 @@ def test_every_entry_point_uses_shared_resolution_for_all_common_fields(entry_po
     assert resolved[1].source is source
     assert resolved[1].declared_encoding == "cp1252"
     assert resolved[1].target_encoding == "utf-16"
-    assert resolved[1].password == b" exact secret "
+    assert resolved[1].source.password == " exact secret "
+    assert not hasattr(resolved[1], "password")
     assert resolved[1].source_format == "txt"
     assert first.artifact is second.artifact is source
     assert first.outcome == second.outcome == "no_change"
@@ -193,7 +196,7 @@ def test_every_entry_point_uses_shared_resolution_for_all_common_fields(entry_po
 
 
 @pytest.mark.parametrize("entry_point", ENTRY_POINTS)
-@pytest.mark.parametrize("field", ["source", "output_path", "declared_encoding", "target_encoding", "password", "source_format"])
+@pytest.mark.parametrize("field", ["source", "output_path", "declared_encoding", "target_encoding", "source_format"])
 def test_every_entry_point_rejects_mixed_inputs_before_io(entry_point, field, monkeypatch):
     request = NormalizationRequest(source=b"text", output_path=None, source_format="txt")
 
@@ -269,10 +272,10 @@ def test_automatic_coordinator_has_equivalent_keyword_and_request_flows(disk, tm
     assert path.read_bytes() == original
 
 
-def test_automatic_coordinator_accepts_memory_format_and_password_keywords():
+def test_automatic_coordinator_accepts_memory_artifact_password():
     original = encoded_pdf(add_all_features, encrypted="open-me")
     result = DocumentNormalizer().normalize(
-        source=original, source_format="pdf", password="open-me", output_path=None,  # ggignore: synthetic PDF fixture password.
+        source=Artifact(data=original, password="open-me"), source_format="pdf",  output_path=None,  # ggignore: synthetic PDF fixture password.
     )
     assert result.outcome == "changed"
     assert [step.report.outcome for step in result.report.steps] == ["changed"] * 3
@@ -288,8 +291,8 @@ def test_coordinator_keywords_still_forward_requests_to_custom_workers(tmp_path)
     last = RecordingWorker("last", "no_change")
     destination = tmp_path / "final.bin"
     result = DocumentNormalizer(workers=(first, last)).normalize(
-        source=b"original", output_path=destination, declared_encoding="cp1252",
-        target_encoding="utf-16", password="secret", source_format="custom",
+        source=Artifact(data=b"original", password="secret"), output_path=destination, declared_encoding="cp1252",
+        target_encoding="utf-16",  source_format="custom",
     )
     assert result.outcome == "changed"
     assert destination.read_bytes() == b"original!"
@@ -300,9 +303,10 @@ def test_coordinator_keywords_still_forward_requests_to_custom_workers(tmp_path)
         assert request.output_path is None
         assert request.declared_encoding == "cp1252"
         assert request.target_encoding == "utf-16"
-        assert request.password == "secret"
         assert request.source_format == "custom"
     assert last.requests[0].source is first.results[0].artifact
+    assert first.requests[0].source.password == "secret"
+    assert last.requests[0].source.password is None
 
 
 def test_empty_explicit_coordinator_accepts_keywords_without_format():

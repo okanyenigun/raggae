@@ -307,7 +307,7 @@ def test_worker_contract_and_unused_settings(fake_engine):
     assert not hasattr(worker, "version")
     with pytest.raises(TypeError, match="NormalizationRequest"):
         worker.normalize({})
-    result = worker.normalize(NormalizationRequest(source=SOURCE, output_path=None, password="unused-secret", declared_encoding="ascii"))
+    result = worker.normalize(NormalizationRequest(source=Artifact(data=SOURCE, password="unused-secret"), output_path=None,  declared_encoding="ascii"))
     assert result.outcome == "changed"
     assert "unused-secret" not in repr(result)
 

@@ -76,9 +76,9 @@ def test_storage_modes_follow_artifacts_and_save_only_changes(
     original = tmp_path / "original.bin"
     original.write_bytes(b"original")
     request = NormalizationRequest(
-        source=original if file_source else b"original",
+        source=Artifact(path=original, password="secret") if file_source else Artifact(data=b"original", password="secret"),
         output_path=tmp_path / "final.bin" if final_file else None,
-        declared_encoding="cp1252", password="secret", source_format="custom",
+        declared_encoding="cp1252", source_format="custom",
     )
     workers = tuple(StorageWorker("same", outcome) for outcome in outcomes)
     overrides = (tmp_path / "first.bin", None) if mode == "overrides" else None
@@ -97,9 +97,11 @@ def test_storage_modes_follow_artifacts_and_save_only_changes(
     assert workers[1].requests[0].source.read_bytes() == b"original" + (b"!" if outcomes[0] == "changed" else b"")
     for worker in workers:
         assert worker.requests[0].declared_encoding == "cp1252"
-        assert worker.requests[0].password == "secret"
         assert worker.requests[0].source_format == "custom"
         assert worker.requests[0].output_path != request.output_path or request.output_path is None
+    assert workers[0].requests[0].source.password == "secret"
+    assert workers[1].requests[0].source.password == (None if outcomes[0] == "changed" else "secret")
+    assert result.artifact.password == (None if changes else "secret")
     for index, step in enumerate(result.report.steps):
         saved = outcomes[index] == "changed" and (mode == "folder" or (mode == "overrides" and index == 0))
         assert (step.output_path is not None) == saved

@@ -1,6 +1,6 @@
 """One request and document-result contract for normalization workers."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast, get_args
 from pydantic import BaseModel
@@ -28,7 +28,6 @@ class NormalizationRequest:
     source_format: str | None
     declared_encoding: TextEncoding | None
     target_encoding: TextEncoding
-    password: str | bytes | None = field(repr=False)
 
     def __init__(
         self,
@@ -37,7 +36,6 @@ class NormalizationRequest:
         output_path: Path | str | None,
         declared_encoding: TextEncoding | None = None,
         target_encoding: TextEncoding = "utf-8",
-        password: str | bytes | None = None,
         source_format: str | None = None,
     ) -> None:
         if isinstance(source, bytes):
@@ -45,8 +43,6 @@ class NormalizationRequest:
         elif not isinstance(source, Artifact):
             source = Artifact(path=source)
         destination = None if output_path is None else require_path(output_path)
-        if password is not None and not isinstance(password, (str, bytes)):
-            raise TypeError("password must be str, bytes, or None")
         if declared_encoding is not None:
             if not isinstance(declared_encoding, str):
                 raise TypeError("declared_encoding must be a string or None")
@@ -79,7 +75,6 @@ class NormalizationRequest:
         object.__setattr__(self, "source_format", source_format)
         object.__setattr__(self, "declared_encoding", declared_encoding)
         object.__setattr__(self, "target_encoding", target)
-        object.__setattr__(self, "password", password)
 
 
 @dataclass(frozen=True, slots=True)

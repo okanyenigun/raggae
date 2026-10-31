@@ -29,6 +29,7 @@ from .schemas.result import (
 )
 from .schemas.decision import DecisionPolicy
 from .schemas.report import DocumentValidationReport
+from ..normalization.artifacts import Artifact
 
 
 class DocumentInspector:
@@ -58,9 +59,7 @@ class DocumentInspector:
             else SignatureContentTypeDetector()
         )
         self._encryption_probe = (
-            encryption_probe
-            if encryption_probe is not None
-            else PdfEncryptionProbe()
+            encryption_probe if encryption_probe is not None else PdfEncryptionProbe()
         )
         self._resource_probes = (
             resource_probes
@@ -83,19 +82,27 @@ class DocumentInspector:
             )
         )
         self._capability_probes = (
-            capability_probes
-            if capability_probes is not None
-            else PdfCapabilityProbe()
+            capability_probes if capability_probes is not None else PdfCapabilityProbe()
         )
         self._policy = policy if policy is not None else DecisionPolicy()
 
     def validate(
         self,
-        path: Path,
+        path: Path | str | Artifact,
         submitted_filename: str | None = None,
         password: str | None = None,
     ) -> DocumentValidationReport:
-        target = Path(path)
+        if isinstance(path, Artifact):
+            if path.path is None:
+                raise ValueError("validation requires a file-backed Artifact")
+            if password is not None:
+                raise TypeError(
+                    "set password on the Artifact when validating an Artifact"
+                )
+            password = path.password
+            target = path.path
+        else:
+            target = Path(path)
         run = ValidationRun()
         self._run_filename(
             run, target.name if submitted_filename is None else submitted_filename

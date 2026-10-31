@@ -103,7 +103,7 @@ def test_no_metadata_returns_exact_original_without_creating_info(disk, tmp_path
 def test_idempotent_and_shared_settings_ignored():
     worker = PdfMetadataSanitizer()
     first = worker.normalize(NormalizationRequest(
-        source=encoded_pdf(), output_path=None, declared_encoding="ascii", password="unused-secret",
+        source=Artifact(data=encoded_pdf(), password="unused-secret"), output_path=None, declared_encoding="ascii",
     ))
     second = worker.normalize(NormalizationRequest(source=first.artifact, output_path=None))
     assert second.outcome == "no_change"
@@ -144,14 +144,14 @@ def test_strict_open_does_not_repair_cross_reference():
 def test_password_required_pdf_must_use_access_worker_first(tmp_path):
     data = encoded_pdf(user="open-me")
     result = PdfMetadataSanitizer().normalize(NormalizationRequest(
-        source=data, output_path=tmp_path / "output.pdf", password="open-me",  # ggignore: synthetic PDF fixture password.
+        source=Artifact(data=data, password="open-me"), output_path=tmp_path / "output.pdf",   # ggignore: synthetic PDF fixture password.
     ))
     assert result.artifact is None
     assert result.report.issues[0].code == PdfMetadataFinding.PASSWORD_REQUIRED
     assert "open-me" not in result.report.model_dump_json()
     assert not list(tmp_path.iterdir())
     accessible = PdfDecryptionNormalizer().normalize(NormalizationRequest(
-        source=data, output_path=None, password="open-me",  # ggignore: synthetic PDF fixture password.
+        source=Artifact(data=data, password="open-me"), output_path=None,   # ggignore: synthetic PDF fixture password.
     ))
     sanitized = PdfMetadataSanitizer().normalize(NormalizationRequest(source=accessible.artifact, output_path=None))
     assert sanitized.outcome == "changed"
