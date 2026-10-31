@@ -225,7 +225,7 @@ def test_malformed_annotation_collection_at_removal_boundary():
 
 def test_password_is_not_used_to_duplicate_pdf_access_work(tmp_path):
     result = PdfActiveContentSanitizer().normalize(NormalizationRequest(
-        source=encoded_pdf(add_all_features, encrypted="open-me"), password="open-me",  # ggignore: synthetic PDF fixture password.
+        source=Artifact(data=encoded_pdf(add_all_features, encrypted="open-me"), password="open-me"),   # ggignore: synthetic PDF fixture password.
         output_path=tmp_path / "output.pdf",
     ))
     assert result.artifact is None
@@ -236,7 +236,7 @@ def test_password_is_not_used_to_duplicate_pdf_access_work(tmp_path):
 
 def test_pdf_access_output_feeds_sanitizer():
     accessible = PdfDecryptionNormalizer().normalize(NormalizationRequest(
-        source=encoded_pdf(add_all_features, encrypted="open-me"), password="open-me",  # ggignore: synthetic PDF fixture password.
+        source=Artifact(data=encoded_pdf(add_all_features, encrypted="open-me"), password="open-me"),   # ggignore: synthetic PDF fixture password.
         output_path=None,
     ))
     result = PdfActiveContentSanitizer().normalize(NormalizationRequest(
@@ -312,8 +312,8 @@ def test_worker_contract_and_shared_settings():
     with pytest.raises(TypeError, match="NormalizationRequest"):
         worker.normalize({})
     result = worker.normalize(NormalizationRequest(
-        source=encoded_pdf(), output_path=None,
-        declared_encoding="ascii", password="unused-secret",
+        source=Artifact(data=encoded_pdf(), password="unused-secret"), output_path=None,
+        declared_encoding="ascii",
     ))
     assert result.outcome == "no_change"
     assert "unused-secret" not in repr(result)

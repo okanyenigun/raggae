@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing published release tag to retry (for example, v0.2.0)
+        description: Existing published release tag to retry (for example, v0.3.0)
         required: true
         type: string
 

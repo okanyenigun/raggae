@@ -156,7 +156,7 @@ def test_legacy_encoding_can_be_prepared_by_text_worker():
 def test_idempotent_and_shared_settings_ignored():
     worker = CsvFormulaSanitizer()
     first = worker.normalize(NormalizationRequest(
-        source=b"name,=1+1\n", output_path=None, declared_encoding="ascii", password="unused-secret",
+        source=Artifact(data=b"name,=1+1\n", password="unused-secret"), output_path=None, declared_encoding="ascii",
     ))
     second = worker.normalize(NormalizationRequest(source=first.artifact, output_path=None))
     assert second.outcome == "no_change"

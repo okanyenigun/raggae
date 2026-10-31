@@ -229,13 +229,14 @@ def test_invalid_format_values_rejected_by_request(source_format, error):
 
 def test_request_format_is_frozen_and_survives_internal_advancement():
     request = NormalizationRequest(
-        source=b"original", source_format="html", output_path=None,
-        declared_encoding="cp1252", password="secret",
+        source=Artifact(data=b"original", password="secret"), source_format="html", output_path=None,
+        declared_encoding="cp1252",
     )
     advanced = replace(request, source=Artifact(data=b"next"))
     assert advanced.source_format == request.source_format == "html"
     assert advanced.declared_encoding == "cp1252"
-    assert advanced.password == "secret"
+    assert advanced.source.password is None
+    assert request.source.password == "secret"
     assert request.source.data == b"original"
     with pytest.raises(FrozenInstanceError):
         request.source_format = "pdf"
@@ -300,8 +301,8 @@ def test_real_default_pdf_flow_decrypts_before_removing_active_content_and_metad
     path = tmp_path / "original.pdf"
     path.write_bytes(original)
     result = DocumentNormalizer().normalize(NormalizationRequest(
-        source=path, output_path=tmp_path / "normalized.pdf" if disk else None,
-        password=encrypted,
+        source=Artifact(path=path, password=encrypted), output_path=tmp_path / "normalized.pdf" if disk else None,
+
     ))
     assert result.outcome == "changed"
     assert [step.report.outcome for step in result.report.steps] == [
@@ -322,8 +323,8 @@ def test_real_default_pdf_flow_decrypts_before_removing_active_content_and_metad
 def test_default_pdf_password_failure_stops_before_sanitizers(password, tmp_path):
     destination = tmp_path / "normalized.pdf"
     result = DocumentNormalizer().normalize(NormalizationRequest(
-        source=encoded_pdf(encrypted="open-me"), source_format="pdf",
-        password=password, output_path=destination,
+        source=Artifact(data=encoded_pdf(encrypted="open-me"), password=password), source_format="pdf",
+         output_path=destination,
     ))
     assert result.outcome == "failed"
     assert result.artifact is None

@@ -160,23 +160,22 @@ def test_existing_request_passes_through_without_reconstruction(monkeypatch):
 
 def test_keyword_resolution_uses_request_defaults_and_normalization():
     request = resolve_request(None, {
-        "source": b"caf\xe9", "output_path": None,
+        "source": Artifact(data=b"caf\xe9", password=" exact secret "), "output_path": None,
         "declared_encoding": " cp1252 ", "source_format": " .CSV ",
-        "password": b" exact secret ",
     })
     assert isinstance(request, NormalizationRequest)
     assert request.source.data == b"caf\xe9"
     assert request.target_encoding == "utf-8"
     assert request.declared_encoding == "cp1252"
     assert request.source_format == "csv"
-    assert request.password == b" exact secret "
+    assert request.source.password == " exact secret "
     assert "exact secret" not in repr(request)
 
 
 def test_ignored_common_fields_remain_accepted_and_secrets_are_not_reported():
     result = StrictTextEncodingNormalizer().normalize(
-        source=b"caf\xe9", output_path=None, declared_encoding="cp1252",
-        source_format="csv", password="unused secret",
+        source=Artifact(data=b"caf\xe9", password="unused secret"), output_path=None, declared_encoding="cp1252",
+        source_format="csv",
     )
     assert result.outcome == "changed"
     assert result.artifact.read_bytes() == "café".encode("utf-8")

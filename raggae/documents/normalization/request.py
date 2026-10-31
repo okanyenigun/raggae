@@ -14,7 +14,6 @@ class NormalizationArguments(TypedDict):
     output_path: Path | str | None
     declared_encoding: NotRequired[TextEncoding | None]
     target_encoding: NotRequired[TextEncoding]
-    password: NotRequired[str | bytes | None]
     source_format: NotRequired[str | None]
 
 
@@ -27,10 +26,14 @@ def resolve_request(
         if not isinstance(request, NormalizationRequest):
             raise TypeError("request must be a NormalizationRequest")
         if arguments:
-            raise TypeError("pass either a NormalizationRequest or keyword arguments, not both")
+            raise TypeError(
+                "pass either a NormalizationRequest or keyword arguments, not both"
+            )
         return request
     if not arguments:
-        raise TypeError("pass a NormalizationRequest or source/output_path keyword arguments")
+        raise TypeError(
+            "pass a NormalizationRequest or source/output_path keyword arguments"
+        )
     # This is a typing-only description of the dictionary. The constructor
     # still rejects missing fields, unknown keywords, and invalid field values.
     return NormalizationRequest(**cast(NormalizationArguments, arguments))
