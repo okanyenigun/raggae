@@ -36,7 +36,7 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
       - name: Install locked dependencies
-        run: uv sync --locked --dev --extra layout-pdf --extra layout-docx --extra layout-pptx --extra layout-xlsx --extra layout-html --extra layout-visual
+        run: uv sync --locked --dev --extra layout-pdf --extra layout-docx --extra layout-pptx --extra layout-xlsx --extra layout-html --extra layout-visual --extra text-markdown --extra text-html --extra text-office --extra text-pandas --extra text-pdf
       - name: Run pytest
         run: uv run --locked --no-sync pytest -x
 

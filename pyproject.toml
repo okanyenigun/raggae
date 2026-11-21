@@ -1,6 +1,6 @@
 [project]
 name = "raggae"
-version = "0.3.0"
+version = "0.4.0"
 description = "A modular Python SDK for building retrieval-augmented generation pipelines"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -32,7 +32,16 @@ text-html = ["beautifulsoup4==4.15.0", "trafilatura==2.2.0"]
 text-office = ["openpyxl==3.1.5", "python-docx==1.2.0", "python-pptx==1.0.2"]
 text-pandas = ["pandas==2.3.3", "openpyxl==3.1.5"]
 text-pdf = ["pypdfium2==5.13.0", "pdfminer.six==20260107", "pdfplumber==0.11.10"]
+# PyMuPDF is AGPL-3.0 or Artifex commercial; kept in its own opt-in extra.
+text-pymupdf = ["PyMuPDF==1.28.2"]
+# PyMuPDF4LLM and its pymupdf_layout model are AGPL-3.0 or Artifex commercial.
+text-pymupdf4llm = ["pymupdf4llm==1.28.2"]
+# MarkItDown (MIT) also installs magika and its onnxruntime dependency.
+text-markitdown = ["markitdown[pdf]==0.1.9"]
+# Docling (MIT) PDF pipeline with local layout/table models; PyTorch-based, no OCR engine.
+text-docling = ["docling-slim[convert-core,format-pdf,models-local]==2.150.1"]
 text-tesseract = ["pytesseract==0.3.13"]
+text-paddle = ["paddleocr==3.7.0", "paddlepaddle==3.3.1", "numpy==2.3.5"]
 text-unstructured = ["unstructured[docx,pptx,xlsx,md]==0.27.8"]
 
 [tool.hatch.build.targets.wheel]
@@ -45,7 +54,17 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Warnings raised inside third-party libraries, not by raggae's code.
+filterwarnings = [
+    "ignore:`force_full_page_ocr` is deprecated:DeprecationWarning",
+    "ignore:This field is deprecated. Use `generate_page_images=True`:DeprecationWarning",
+    "ignore:No ccache found:UserWarning",
+]
 
 [tool.pyright]
 venvPath = "."
 venv = ".venv"
+
+[tool.ruff.lint]
+# Import order and placement follow the project's own style, not isort's.
+extend-ignore = ["I", "E402"]
