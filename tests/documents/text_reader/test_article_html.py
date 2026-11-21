@@ -16,6 +16,8 @@ from raggae.documents.text_reader import (
     TextReadResult,
 )
 
+pytest.importorskip("trafilatura", reason="Install raggae[text-html]")
+
 PAGE = """<html><head><title>Shop title</title><style>p { color: red }</style>
 <script>trackVisit()</script></head><body>
 <nav><a href="/">Home</a> | <a href="/shop">Shop</a> | <a href="/cart">Cart</a></nav>

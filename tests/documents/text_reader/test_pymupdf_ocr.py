@@ -225,7 +225,8 @@ def test_blank_pages_are_reported_empty_and_others_kept(reader, make_reader_pdf)
 
 @needs_tessdata
 def test_fractional_dpi_is_accepted(make_reader_pdf):
-    reader = PyMuPdfOcrTextReader(language="eng", tessdata=TESSDATA, dpi=250.5)
+    pytest.importorskip("pymupdf", reason="Install raggae[text-pymupdf]")
+    reader =PyMuPdfOcrTextReader(language="eng", tessdata=TESSDATA, dpi=250.5)
     data = make_reader_pdf((text_page("Fractional resolution"),))
     assert [b.text for b in reader.read(data).blocks] == ["Fractional resolution"]
 
