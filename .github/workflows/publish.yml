@@ -82,7 +82,7 @@ jobs:
     name: Verify the public PyPI release
     needs: [release-check, publish]
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -102,5 +102,17 @@ jobs:
         run: |
           uv run --no-project python scripts/ci/check_release.py pypi --version "$RELEASE_VERSION"
           uv venv --python 3.13 "$RUNNER_TEMP/pypi-smoke"
-          uv pip install --no-cache --index-url https://pypi.org/simple/ --python "$RUNNER_TEMP/pypi-smoke/bin/python" "raggae==$RELEASE_VERSION"
+          # PyPI's simple index is cached for up to 10 minutes, so a new release
+          # can be uploaded but not yet installable. Retry for up to 12 minutes.
+          for attempt in $(seq 1 12); do
+            if uv pip install --no-cache --index-url https://pypi.org/simple/ --python "$RUNNER_TEMP/pypi-smoke/bin/python" "raggae==$RELEASE_VERSION"; then
+              break
+            fi
+            if [ "$attempt" -eq 12 ]; then
+              echo "raggae==$RELEASE_VERSION is still not installable from PyPI." >&2
+              exit 1
+            fi
+            echo "raggae==$RELEASE_VERSION is not installable yet (attempt $attempt of 12); retrying in 60 seconds."
+            sleep 60
+          done
           "$RUNNER_TEMP/pypi-smoke/bin/python" -I scripts/ci/check_release.py smoke --version "$RELEASE_VERSION"
