@@ -27,6 +27,7 @@ pip install raggae
 | Normalization | Converts text encodings, fixes image orientation, decrypts PDFs, removes active content and metadata, and converts formats. | `DocumentNormalizer` |
 | Layout analysis | Locates text, table, and image regions; suggests reading order; links captions; detects repeated headers and footers. | `DocumentLayoutAnalyzer` |
 | Text reading | Reads text from plain text, Markdown, JSON, CSV, Excel, Word, PowerPoint, HTML, PDF, and images (OCR), as whole documents or selected layout regions. | Independent readers |
+| Image extraction | Extracts pictures from PDF, Word, PowerPoint, Excel, HTML, Markdown, and image files, as whole documents or selected layout regions. | Independent extractors |
 
 ## Quick start
 
@@ -94,6 +95,35 @@ Every reader returns blocks with their page, region, format (`plain_text`,
 `markdown`, `json`, or `xml`), and method (`native`, `ocr`, or `vision`), plus
 findings for anything left unread. Omit `layout` to read whole documents.
 
+### Extract images
+
+```bash
+pip install "raggae[layout-pdf,image-pdf]"
+```
+
+```python
+from raggae.documents.layout_analysis import NativePdfLayoutAnalyzer
+from raggae.documents.image_extractor import PdfiumImageExtractor
+
+layout = NativePdfLayoutAnalyzer().analyze("report.pdf")
+
+result = PdfiumImageExtractor().extract("report.pdf", layout=layout)
+for image in result.images:
+    print(image.page_index, image.region_id, image.media_type, image.width, image.height, image.method)
+```
+
+Every extractor returns images with their page, region, media type, size, and
+how they were obtained: `original` (the stored file, byte for byte), `reencoded`
+(stored pixels saved as a new file), or `rendered` (a crop of the drawn page),
+plus findings for anything left out. `image.data` holds the image file's bytes
+and `image.to_base64()` the same as base64. Omit `layout` to extract from whole
+documents.
+
+`PdfiumImageExtractor` returns what a reader sees by default;
+`PdfiumImageExtractor(mode="stored")` returns the stored picture files instead.
+A chart drawn with lines has no stored file, so it is found only through a layout
+region. Pictures that point to another file are reported, never opened or fetched.
+
 ## Optional dependencies
 
 | Extra | Purpose |
@@ -106,9 +136,12 @@ findings for anything left unread. Omit `layout` to read whole documents.
 | `text-docling`, `text-markitdown` | Docling and Granite-Docling, and MarkItDown PDF readers. |
 | `text-tesseract`, `text-paddle` | OCR services for `OcrTextReader` (add `image-pdf` for PDF pages). |
 | `text-unstructured` | Unstructured wrappers; also run `python -m spacy download en_core_web_sm`. |
-| `text-pymupdf`, `text-pymupdf4llm` | PyMuPDF readers. **AGPL-3.0 or Artifex commercial licence.** |
+| `text-pymupdf`, `text-pymupdf4llm` | PyMuPDF readers, and `PyMuPdfImageExtractor`. **AGPL-3.0 or Artifex commercial licence.** |
+| `image-pdf` | PDF page rendering for `PdfiumImageExtractor` and OCR of PDF pages. |
 
-Plain text, CSV, JSON, and pypdf readers need no extra. Nothing is downloaded at
+Plain text, CSV, JSON, and pypdf readers, and the pikepdf, pypdf, and Pillow image
+extractors, need no extra. The Word, PowerPoint, Excel, HTML, and Markdown image
+extractors use the `text-office`, `text-html`, and `text-markdown` extras. Nothing is downloaded at
 run time: models, the Tesseract engine, and Ollama vision models must be
 installed locally first.
 
