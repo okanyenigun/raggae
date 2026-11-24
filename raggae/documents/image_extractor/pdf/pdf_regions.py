@@ -14,7 +14,7 @@ from ..models import ImageExtractFinding, ImageExtractResult, ImageFindingCode
 from ..utils import failure
 from ...layout_analysis.models import LayoutRegion, LayoutSurface, PdfPageLocation
 from ...normalization.artifacts import Artifact
-from ...pdf_geometry import Box, displayed_size, inside, user_unit, visible_crop
+from ...shared.pdf_geometry import Box, displayed_size, inside, user_unit, visible_crop
 
 
 def open_document(

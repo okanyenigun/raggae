@@ -30,7 +30,7 @@ from ...layout_analysis.models import (
 )
 from ...normalization.artifacts import Artifact
 from ...normalization.models import TextEncoding
-from ...sources import as_artifact
+from ...shared.sources import as_artifact
 
 # Never read: executable, styling, inert, or document-metadata elements (as the
 # HTML text reader). Not pictures: vector, embedded, or interactive elements.

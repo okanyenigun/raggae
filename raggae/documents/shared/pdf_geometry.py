@@ -1,4 +1,5 @@
-"""PDF-space geometry shared by PDF text readers and image extractors."""
+"""PDF geometry and character assembly shared by PDF text readers, image extractors,
+and table extractors."""
 
 from math import isfinite
 from typing import Any
@@ -82,3 +83,74 @@ def user_unit(value: Any) -> float:
     if not isfinite(unit) or unit <= 0:
         raise ValueError("invalid UserUnit")
     return unit
+
+
+def unrotated_characters(
+    characters: list[dict[str, Any]],
+    rotation: int,
+) -> list[dict[str, Any]]:
+    """Undo page rotation for word assembly, after selecting displayed boxes.
+
+    ``characters`` are pdfplumber character objects, in pdfplumber's displayed
+    coordinates; ``rotation`` is the page's quarter-turn rotation.
+
+    Otherwise a 180-degree page can reverse a word's letters. These copies
+    affect only text grouping; supplied layout geometry is unchanged.
+    Relative coordinates suffice, so no origin translation is needed here.
+    """
+    if rotation == 0:
+        return characters
+    result: list[dict[str, Any]] = []
+    for char in characters:
+        left, top, right, bottom = (
+            char["x0"],
+            char["top"],
+            char["x1"],
+            char["bottom"],
+        )
+        if rotation == 90:
+            box = (top, -right, bottom, -left)
+        elif rotation == 180:
+            box = (-right, -bottom, -left, -top)
+        else:  # displayed_crop already validates quarter-turn rotations.
+            box = (-bottom, left, -top, right)
+        x0, y0, x1, y1 = box
+        result.append(
+            {
+                **char,
+                "x0": x0,
+                "top": y0,
+                "x1": x1,
+                "bottom": y1,
+                "width": x1 - x0,
+                "height": y1 - y0,
+                "doctop": y0,
+                "upright": not char["upright"]
+                if rotation in (90, 270)
+                else char["upright"],
+            }
+        )
+    return result
+
+
+def assemble(
+    characters: list[tuple[str, Box]], owners: list[list[int]], scope: int
+) -> str:
+    """Join a scope's characters, keeping one space or line break between them.
+
+    Whitespace (PDFium's generated or stored) and characters of other scopes
+    become a single separator; a line break wins over a space.
+    """
+    pieces: list[str] = []
+    newline = space = False
+    for (character, _), found in zip(characters, owners):
+        if character in "\r\n":
+            newline = True
+        elif character.isspace() or scope not in found:
+            space = True
+        else:
+            if pieces and (newline or space):
+                pieces.append("\n" if newline else " ")
+            pieces.append(character)
+            newline = space = False
+    return "".join(pieces)

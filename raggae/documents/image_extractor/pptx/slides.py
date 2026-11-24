@@ -33,7 +33,7 @@ from ...layout_analysis.models import (
     PptxShapeLocation,
 )
 from ...normalization.artifacts import Artifact
-from ...sources import as_artifact
+from ...shared.sources import as_artifact
 
 # Graphic-frame contents that look like figures but are not stored pictures.
 _FRAME_KINDS = ("/chart", "/diagram", "/ole")

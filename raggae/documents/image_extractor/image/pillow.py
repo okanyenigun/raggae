@@ -29,7 +29,7 @@ from ...layout_analysis.models import (
     LayoutSurface,
 )
 from ...normalization.artifacts import Artifact
-from ...sources import as_artifact
+from ...shared.sources import as_artifact
 
 # Pillow format names this worker accepts; MPO is a JPEG with a multi-picture marker.
 _FORMATS: dict[str, ImageMediaType] = {

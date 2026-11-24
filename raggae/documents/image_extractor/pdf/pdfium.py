@@ -33,9 +33,9 @@ from ..utils import (
 )
 from ...layout_analysis.models import LayoutAnalysisResult, LayoutRegion, LayoutSurface
 from ...normalization.artifacts import Artifact
-from ...pages import PdfPages
-from ...pdf_geometry import displayed_box, inside, pdf_box
-from ...sources import as_artifact
+from ...shared.pages import PdfPages
+from ...shared.pdf_geometry import displayed_box, inside, pdf_box
+from ...shared.sources import as_artifact
 
 type PdfiumMode = Literal["rendered", "stored"]
 # Left, top, right, bottom in displayed points, measured from the page's top-left.

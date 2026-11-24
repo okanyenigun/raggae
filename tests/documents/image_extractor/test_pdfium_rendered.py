@@ -234,7 +234,7 @@ def test_page_above_pillows_ceiling_is_not_rendered(pdf, monkeypatch):
 
 
 def test_page_that_cannot_be_rendered_keeps_other_pages(pdf, monkeypatch):
-    from raggae.documents.pages import PdfPages
+    from raggae.documents.shared.pages import PdfPages
 
     real = PdfPages.render
 

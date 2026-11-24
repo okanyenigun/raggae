@@ -1,6 +1,5 @@
 """Read PDF document elements with Docling, offline, from local models."""
 
-import warnings
 from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
@@ -16,6 +15,7 @@ from ..models import (
 )
 from ..utils.sources import failure, prepare_source
 from ...layout_analysis.models import LayoutAnalysisResult
+from ...shared.docling_pdf import decrypted, pdf_converter
 from ...normalization.artifacts import Artifact
 
 
@@ -148,67 +148,21 @@ class DoclingPdfTextReader:
         if self._converter is not None:
             return self._converter
         try:
-            from docling.datamodel.base_models import InputFormat
-            from docling.datamodel.pipeline_options import PdfPipelineOptions
-            from docling.document_converter import DocumentConverter, PdfFormatOption
+            converter = pdf_converter(self._models_path)
         except ImportError as error:
             raise ImportError(
                 "Docling PDF reading requires: pip install 'raggae[text-docling]'"
-            ) from error
-        options = PdfPipelineOptions(
-            artifacts_path=self._models_path,
-            do_ocr=False,
-            do_table_structure=True,
-            do_picture_classification=False,
-            do_picture_description=False,
-            generate_page_images=False,
-            generate_picture_images=False,
-            enable_remote_services=False,
-        )
-        converter = DocumentConverter(
-            allowed_formats=[InputFormat.PDF],
-            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)},
-        )
-        try:
-            converter.initialize_pipeline(InputFormat.PDF)
-        except (OSError, RuntimeError, ValueError, KeyError, ImportError) as error:
-            raise ValueError(
-                "models_path does not contain usable Docling layout and table models; "
-                "download them with docling.utils.model_downloader.download_models"
             ) from error
         self._converter = converter
         return converter
 
     def _decrypted(self, data: bytes, password: str | None) -> bytes | TextReadResult:
         """Apply an Artifact password with pikepdf; Docling gets an open PDF."""
-        import pikepdf
-
-        try:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                with pikepdf.Pdf.open(
-                    BytesIO(data), password=password or ""
-                ) as document:
-                    if not len(document.pages):
-                        return self._failure(
-                            FindingCode.NO_PAGES, "PDF contains no usable pages."
-                        )
-                    if not document.is_encrypted:
-                        return data
-                    with BytesIO() as output:
-                        document.save(output)
-                        return output.getvalue()
-        except pikepdf.PasswordError:
-            code = (
-                FindingCode.INVALID_PASSWORD
-                if password
-                else FindingCode.PASSWORD_REQUIRED
-            )
-            return self._failure(
-                code, "PDF could not be opened with the supplied password."
-            )
-        except (pikepdf.PdfError, ValueError, OSError):
-            return self._failure(FindingCode.DECODE_FAILED, "PDF could not be opened.")
+        opened = decrypted(data, password)
+        if isinstance(opened, bytes):
+            return opened
+        code, message = opened
+        return self._failure(FindingCode(code), message)
 
     def _failure(self, code: FindingCode, message: str) -> TextReadResult:
         return failure(self.name, code, message)

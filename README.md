@@ -28,6 +28,7 @@ pip install raggae
 | Layout analysis | Locates text, table, and image regions; suggests reading order; links captions; detects repeated headers and footers. | `DocumentLayoutAnalyzer` |
 | Text reading | Reads text from plain text, Markdown, JSON, CSV, Excel, Word, PowerPoint, HTML, PDF, and images (OCR), as whole documents or selected layout regions. | Independent readers |
 | Image extraction | Extracts pictures from PDF, Word, PowerPoint, Excel, HTML, Markdown, and image files, as whole documents or selected layout regions. | Independent extractors |
+| Table extraction | Extracts tables as grids of cells, with merged cells and header cells kept, from PDF, Word, PowerPoint, Excel, HTML, Markdown, CSV, and image files (OCR), as whole documents or selected layout regions. | Independent extractors |
 
 ## Quick start
 
@@ -124,6 +125,39 @@ documents.
 A chart drawn with lines has no stored file, so it is found only through a layout
 region. Pictures that point to another file are reported, never opened or fetched.
 
+### Extract tables
+
+```bash
+pip install "raggae[layout-pdf,text-pdf]"
+```
+
+```python
+from raggae.documents.layout_analysis import NativePdfLayoutAnalyzer
+from raggae.documents.table_extractor import PdfplumberTableExtractor
+
+layout = NativePdfLayoutAnalyzer().analyze("report.pdf")
+
+result = PdfplumberTableExtractor().extract("report.pdf", layout=layout)
+for table in result.tables:
+    print(table.page_index, table.region_id, table.method, table.row_count, table.column_count)
+    print(table.to_markdown())
+```
+
+Every extractor returns tables as grids of cells: each cell once, at its top-left
+position, with its row and column spans and whether the source declares it a
+header cell. Each table has its page, region, an author-given caption if there is
+one, and how the grid was obtained: `declared` (the format states it), `ruled`
+(drawn lines), `aligned` (text positions), or `model` (a trained model), plus
+findings for anything left out. `to_html()` keeps spans and header cells;
+`to_markdown()`, `to_dataframe()`, `to_json()`, and `to_xml()` give one row per
+record, with each column named after the header cells above it. Omit `layout` to
+extract from whole documents.
+
+`PdfplumberTableExtractor` searches each layout region for both drawn lines and
+aligned text, so tables without borders are found too; without a layout it looks
+for drawn lines only, since guessing from alignment on a whole page turns ordinary
+paragraphs into tables. Pass `strategy="lines"`, `"text"`, or `"all"` to choose.
+
 ## Optional dependencies
 
 | Extra | Purpose |
@@ -138,10 +172,14 @@ region. Pictures that point to another file are reported, never opened or fetche
 | `text-unstructured` | Unstructured wrappers; also run `python -m spacy download en_core_web_sm`. |
 | `text-pymupdf`, `text-pymupdf4llm` | PyMuPDF readers, and `PyMuPdfImageExtractor`. **AGPL-3.0 or Artifex commercial licence.** |
 | `image-pdf` | PDF page rendering for `PdfiumImageExtractor` and OCR of PDF pages. |
+| `table-ocr` | img2table for `Img2TableExtractor`: tables found in rendered PDF pages and image files (scans also need an OCR service, such as `text-tesseract`). |
 
 Plain text, CSV, JSON, and pypdf readers, and the pikepdf, pypdf, and Pillow image
 extractors, need no extra. The Word, PowerPoint, Excel, HTML, and Markdown image
-extractors use the `text-office`, `text-html`, and `text-markdown` extras. Nothing is downloaded at
+extractors use the `text-office`, `text-html`, and `text-markdown` extras. The CSV
+table extractor needs no extra; the other table extractors use the same extras as
+the text readers for their format (`text-docling` for `DoclingTableExtractor`), and
+`to_dataframe()` needs `text-pandas`. Nothing is downloaded at
 run time: models, the Tesseract engine, and Ollama vision models must be
 installed locally first.
 

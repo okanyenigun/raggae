@@ -25,7 +25,7 @@ from .models import (
 )
 from ..layout_analysis.models import LayoutAnalysisResult, LayoutRegion
 from ..normalization.artifacts import Artifact
-from ..sources import as_artifact, select_regions
+from ..shared.sources import as_artifact, select_regions
 
 # Pillow format names of the image files returned as they are. MPO is Pillow's
 # name for a JPEG that carries a multi-picture marker; it is still a JPEG file.

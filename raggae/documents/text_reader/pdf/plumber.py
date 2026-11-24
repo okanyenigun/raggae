@@ -19,6 +19,7 @@ from ...layout_analysis.region_discovery.pdf.geometry import (
     displayed_crop,
 )
 from ...normalization.artifacts import Artifact
+from ...shared.pdf_geometry import unrotated_characters
 
 
 if TYPE_CHECKING:
@@ -346,9 +347,7 @@ class PdfplumberTextReader:
                     )
                 )
                 continue
-            text = extract_text(
-                self._unrotated_characters(assignments[index], page.rotation)
-            )
+            text = extract_text(unrotated_characters(assignments[index], page.rotation))
             completed += 1
             if not text:
                 findings.append(
@@ -364,51 +363,6 @@ class PdfplumberTextReader:
                 TextBlock(text=text, page_index=page_index, region_id=identifier)
             )
         return blocks, findings, completed
-
-    @staticmethod
-    def _unrotated_characters(
-        characters: list[dict[str, Any]],
-        rotation: int,
-    ) -> list[dict[str, Any]]:
-        """Undo page rotation for word assembly, after selecting displayed boxes.
-
-        Otherwise a 180-degree page can reverse a word's letters. These copies
-        affect only text grouping; supplied layout geometry is unchanged.
-        Relative coordinates suffice, so no origin translation is needed here.
-        """
-        if rotation == 0:
-            return characters
-        result: list[dict[str, Any]] = []
-        for char in characters:
-            left, top, right, bottom = (
-                char["x0"],
-                char["top"],
-                char["x1"],
-                char["bottom"],
-            )
-            if rotation == 90:
-                box = (top, -right, bottom, -left)
-            elif rotation == 180:
-                box = (-right, -bottom, -left, -top)
-            else:  # displayed_crop already validates quarter-turn rotations.
-                box = (-bottom, left, -top, right)
-            x0, y0, x1, y1 = box
-            result.append(
-                {
-                    **char,
-                    "x0": x0,
-                    "top": y0,
-                    "x1": x1,
-                    "bottom": y1,
-                    "width": x1 - x0,
-                    "height": y1 - y0,
-                    "doctop": y0,
-                    "upright": not char["upright"]
-                    if rotation in (90, 270)
-                    else char["upright"],
-                }
-            )
-        return result
 
     @staticmethod
     def _finding(
