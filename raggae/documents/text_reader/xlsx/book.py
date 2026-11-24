@@ -2,8 +2,20 @@
 
 from collections.abc import Iterator
 from typing import Any
-from .geometry import Box, Owned, cells_in, components, contains, point, range_box
-from .values import MISSING, Cell
+from ...shared.xlsx_text import (
+    Box,
+    Cell,
+    Owned,
+    cells_in,
+    components,
+    contains,
+    is_worksheet,
+    point,
+    range_box,
+    stored_value,
+)
+
+__all__ = ["Book", "is_worksheet", "sheet_blocks"]
 
 
 class Book:
@@ -36,21 +48,11 @@ class Book:
                 if (row, column) in spanned:
                     continue
                 cell = source.get((row, column))
-                if cell is None or cell.value is None or not owned((row, column)):
+                if not owned((row, column)):
                     cells.append(Cell(column, None))
-                elif cell.data_type == "f" and values is not None:
-                    saved = values.get((row, column))
-                    value = None if saved is None else saved.value
-                    cells.append(Cell(column, MISSING if value is None else value))
                 else:
-                    cells.append(Cell(column, cell.value))
+                    cells.append(Cell(column, stored_value(cell, values)))
             yield row, cells
-
-
-def is_worksheet(sheet: Any) -> bool:
-    from openpyxl.worksheet.worksheet import Worksheet
-
-    return isinstance(sheet, Worksheet)
 
 
 def sheet_blocks(sheet: Any) -> list[tuple[Box, frozenset[tuple[int, int]]]]:

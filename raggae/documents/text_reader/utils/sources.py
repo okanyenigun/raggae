@@ -8,7 +8,7 @@ from ..models import FindingCode, TextReadFinding, TextReadResult
 from ...layout_analysis.models import LayoutAnalysisResult
 from ...normalization.artifacts import Artifact
 from ...normalization.models import TextEncoding
-from ...sources import as_artifact, select_regions
+from ...shared.sources import as_artifact, select_regions
 
 
 def require_encoding(encoding: TextEncoding) -> TextEncoding:

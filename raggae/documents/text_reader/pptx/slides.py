@@ -14,6 +14,15 @@ from ...layout_analysis.models import (
     PptxShapeLocation,
 )
 from ...normalization.artifacts import Artifact
+from ...shared.pptx_text import (
+    A,
+    P,
+    body_text,
+    hidden,
+    resolve,
+)
+from ...shared.pptx_text import kind as shape_kind
+from ...shared.pptx_text import slides as slide_list
 
 
 class PptxTextReader:
@@ -29,9 +38,6 @@ class PptxTextReader:
     not read. Speaker notes are read only with ``notes=True``, as one block
     after each slide's shape blocks.
     """
-
-    _A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
-    _P = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
 
     _INFORMATIONAL = frozenset(
         {
@@ -104,12 +110,7 @@ class PptxTextReader:
             ) from error
         try:
             presentation = Presentation(BytesIO(data))
-            # Never use presentation.slides: it renames parts to match slide order.
-            slide_ids = presentation.element.sldIdLst
-            slides = [
-                presentation.part.related_slide(slide_id.rId)
-                for slide_id in (slide_ids if slide_ids is not None else ())
-            ]
+            slides = slide_list(presentation)
         except (
             BadZipFile,
             PackageNotFoundError,
@@ -139,7 +140,7 @@ class PptxTextReader:
         inherited = False
         for index, slide in enumerate(slides):
             notes: set[FindingCode] = set()
-            if PptxTextReader._hidden(slide):
+            if hidden(slide):
                 notes.add(FindingCode.HIDDEN_SLIDE)
             for text in PptxTextReader._shapes_texts(slide.shapes, frozenset(), notes):
                 blocks.append(TextBlock(text=text, page_index=index))
@@ -189,11 +190,7 @@ class PptxTextReader:
                 )
                 continue
             found = by_part.get(location.part)
-            shape = (
-                None
-                if found is None
-                else PptxTextReader._resolve(found[1], location.shape_path)
-            )
+            shape = None if found is None else resolve(found[1], location.shape_path)
             if found is None or shape is None or shape.shape_id != location.shape_id:
                 findings.append(
                     PptxTextReader._finding(
@@ -204,7 +201,7 @@ class PptxTextReader:
                     )
                 )
                 continue
-            if PptxTextReader._kind(shape) == "unsupported":
+            if shape_kind(shape) == "unsupported":
                 findings.append(
                     PptxTextReader._finding(
                         FindingCode.SELECTION_UNSUPPORTED,
@@ -235,7 +232,7 @@ class PptxTextReader:
                 )
                 continue
             completed += 1
-            if index not in hidden_reported and PptxTextReader._hidden(slides[index]):
+            if index not in hidden_reported and hidden(slides[index]):
                 hidden_reported.add(index)
                 findings.append(
                     PptxTextReader._note(FindingCode.HIDDEN_SLIDE, page_index=index)
@@ -273,21 +270,6 @@ class PptxTextReader:
         return failure(self.name, code, message)
 
     @staticmethod
-    def _kind(shape: Any) -> str:
-        tag = shape.element.tag
-        if tag == f"{PptxTextReader._P}grpSp":
-            return "group"
-        if tag == f"{PptxTextReader._P}pic":
-            return "picture"
-        if tag == f"{PptxTextReader._P}sp":
-            return "text"
-        if tag == f"{PptxTextReader._P}cxnSp":
-            return "connector"
-        if tag == f"{PptxTextReader._P}graphicFrame" and shape.has_table:
-            return "table"
-        return "unsupported"
-
-    @staticmethod
     def _shapes_texts(
         shapes: Any, excluded: frozenset[int], notes: set[FindingCode]
     ) -> list[str]:
@@ -296,7 +278,7 @@ class PptxTextReader:
         for shape in shapes:
             if id(shape.element) in excluded:
                 continue
-            kind = PptxTextReader._kind(shape)
+            kind = shape_kind(shape)
             if kind == "group":
                 texts.extend(
                     PptxTextReader._shapes_texts(shape.shapes, excluded, notes)
@@ -313,7 +295,7 @@ class PptxTextReader:
     def _shape_text(
         shape: Any, excluded: frozenset[int], notes: set[FindingCode]
     ) -> str | None:
-        kind = PptxTextReader._kind(shape)
+        kind = shape_kind(shape)
         if kind == "group":
             texts = PptxTextReader._shapes_texts(shape.shapes, excluded, notes)
             return "\n".join(texts) if texts else None
@@ -324,49 +306,25 @@ class PptxTextReader:
         if kind == "table":
             return PptxTextReader._table_text(shape.table._tbl)
         if kind == "text":
-            body = shape.element.find(f"{PptxTextReader._P}txBody")
-            return None if body is None else PptxTextReader._body_text(body)
+            body = shape.element.find(f"{P}txBody")
+            return None if body is None else body_text(body)
         if kind == "unsupported":
             notes.add(FindingCode.UNSUPPORTED_CONTENT)
         return None
 
     @staticmethod
-    def _body_text(body: Any) -> str | None:
-        """One line per paragraph; edge blank paragraphs dropped."""
-        lines = [
-            PptxTextReader._paragraph_text(paragraph)
-            for paragraph in body.iter(f"{PptxTextReader._A}p")
-        ]
-        while lines and not lines[0].strip():
-            lines.pop(0)
-        while lines and not lines[-1].strip():
-            lines.pop()
-        return "\n".join(lines) if lines else None
-
-    @staticmethod
-    def _paragraph_text(paragraph: Any) -> str:
-        pieces: list[str] = []
-        for child in paragraph:
-            if child.tag in (f"{PptxTextReader._A}r", f"{PptxTextReader._A}fld"):
-                text = child.find(f"{PptxTextReader._A}t")
-                pieces.append("" if text is None else text.text or "")
-            elif child.tag == f"{PptxTextReader._A}br":
-                pieces.append("\n")
-        return "".join(pieces)
-
-    @staticmethod
     def _table_text(table: Any) -> str | None:
         lines: list[str] = []
-        for row in table.findall(f"{PptxTextReader._A}tr"):
+        for row in table.findall(f"{A}tr"):
             cells: list[str] = []
-            for cell in row.findall(f"{PptxTextReader._A}tc"):
+            for cell in row.findall(f"{A}tc"):
                 if cell.get("hMerge") in ("1", "true"):
                     continue  # Covered by the merged cell to its left.
                 if cell.get("vMerge") in ("1", "true"):
                     cells.append("")  # Covered by the merged cell above.
                     continue
-                body = cell.find(f"{PptxTextReader._A}txBody")
-                text = None if body is None else PptxTextReader._body_text(body)
+                body = cell.find(f"{A}txBody")
+                text = None if body is None else body_text(body)
                 cells.append("" if text is None else " ".join(text.split()))
             if any(cell.strip() for cell in cells):
                 lines.append(" | ".join(cells))
@@ -377,11 +335,7 @@ class PptxTextReader:
         if not slide.has_notes_slide:
             return None
         frame = slide.notes_slide.notes_text_frame
-        return None if frame is None else PptxTextReader._body_text(frame._txBody)
-
-    @staticmethod
-    def _hidden(slide: Any) -> bool:
-        return slide.element.get("show") in ("0", "false")
+        return None if frame is None else body_text(frame._txBody)
 
     @staticmethod
     def _inherited_text(slide: Any) -> bool:
@@ -392,21 +346,6 @@ class PptxTextReader:
             and shape.text_frame.text.strip()
             for shape in list(layout.shapes) + list(layout.slide_master.shapes)
         )
-
-    @staticmethod
-    def _resolve(slide: Any, path: Sequence[int]) -> Any:
-        shapes = slide.shapes
-        shape = None
-        for depth, index in enumerate(path):
-            members = list(shapes)
-            if index >= len(members):
-                return None
-            shape = members[index]
-            if depth < len(path) - 1:
-                if PptxTextReader._kind(shape) != "group":
-                    return None
-                shapes = shape.shapes
-        return shape
 
     @staticmethod
     def _finding(

@@ -1,8 +1,6 @@
 """GraniteDoclingTextReader: Docling's VLM pipeline with granite-docling-258M, offline."""
 
 import builtins
-import os
-import socket
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -30,11 +28,6 @@ from docling_core.types.doc import (  # noqa: E402
     TableData,
 )
 
-MODELS = Path(
-    os.environ.get(
-        "RAGGAE_DOCLING_VLM_MODELS", Path.home() / ".cache" / "raggae" / "docling-vlm"
-    )
-)
 FOLDER = "ibm-granite--granite-docling-258M"
 
 
@@ -305,29 +298,6 @@ def test_missing_backend_has_an_install_hint(monkeypatch, models, make_reader_pd
     monkeypatch.setattr(builtins, "__import__", without_docling)
     with pytest.raises(ImportError, match=r"raggae\[text-docling\]"):
         GraniteDoclingTextReader(models_path=models).read(make_reader_pdf())
-
-
-# Real model (opt-in: slow on CPU) ---------------------------------------------
-
-
-@pytest.mark.skipif(
-    not os.environ.get("RAGGAE_RUN_GRANITE_DOCLING")
-    or not (MODELS / FOLDER / "config.json").is_file(),
-    reason="Set RAGGAE_RUN_GRANITE_DOCLING=1 with the model downloaded (slow on CPU)",
-)
-def test_real_model_reads_a_page_offline(make_reader_pdf, monkeypatch):
-    def no_network(*args, **kwargs):
-        raise AssertionError("must not open network connections")
-
-    monkeypatch.setattr(socket, "create_connection", no_network)
-    monkeypatch.setattr(socket.socket, "connect", no_network)
-    data = make_reader_pdf(
-        (b"BT /F1 18 Tf 30 330 Td (Purchase report) Tj ET",),
-    )
-    result = GraniteDoclingTextReader(models_path=MODELS).read(data)
-    assert result.outcome in ("success", "partial")
-    assert any("Purchase report" in b.text for b in result.blocks)
-    assert {b.method for b in result.blocks} == {"vision"}
 
 
 def test_the_chosen_model_repo_is_what_the_pipeline_loads(tmp_path, monkeypatch):

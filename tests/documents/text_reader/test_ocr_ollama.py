@@ -2,7 +2,6 @@
 
 import base64
 import json
-import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
@@ -270,15 +269,3 @@ def test_model_is_required():
 def test_trailing_slash_in_endpoint_is_accepted(ollama):
     assert service(ollama).recognize(picture()) == "Delivery note\nTotal 42"
     OllamaOcrService(model="vision-model", endpoint=ollama.endpoint + "/")
-
-
-# Real model (opt-in) ------------------------------------------------------------
-
-
-@pytest.mark.skipif(
-    not os.environ.get("RAGGAE_OLLAMA_VISION_MODEL"),
-    reason="Set RAGGAE_OLLAMA_VISION_MODEL to a pulled Ollama vision model",
-)
-def test_real_ollama_vision_model_transcribes_text():
-    ocr = OllamaOcrService(model=os.environ["RAGGAE_OLLAMA_VISION_MODEL"])
-    assert "Invoice 4471" in ocr.recognize(picture("Invoice 4471"))

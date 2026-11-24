@@ -4,7 +4,7 @@ import pypdfium2 as pdfium
 import pytest
 
 from raggae.documents.image_extractor.pdf.pdf_regions import drawn_pictures
-from raggae.documents.pdf_geometry import displayed_box, pdf_box
+from raggae.documents.shared.pdf_geometry import displayed_box, pdf_box
 from tests.documents.image_extractor.conftest import draw
 
 

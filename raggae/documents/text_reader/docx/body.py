@@ -13,6 +13,19 @@ from ...layout_analysis.models import (
     LayoutAnalysisResult,
     LayoutRegion,
 )
+from ...shared.docx_text import (
+    DELETED,
+    DRAWINGS,
+    R,
+    UNSUPPORTED,
+    W,
+    WRAPPERS,
+    alt_text,
+    paragraph_text,
+    resolve,
+    table_text,
+    unreadable,
+)
 from ...normalization.artifacts import Artifact
 
 
@@ -29,42 +42,6 @@ class DocxTextReader:
     read; findings say when they hold text. List numbering is not added.
     """
 
-    _W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-    _MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
-    _WP = "{http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing}"
-    _M = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
-    _V = "{urn:schemas-microsoft-com:vml}"
-    _R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
-
-    _DRAWINGS = frozenset({f"{_W}drawing", f"{_W}pict"})
-    # Containers whose children are ordinary content in the accepted view.
-    _TRANSPARENT = frozenset(
-        {
-            f"{_W}hyperlink",
-            f"{_W}smartTag",
-            f"{_W}customXml",
-            f"{_W}fldSimple",
-            f"{_W}ins",
-            f"{_W}moveTo",
-            f"{_W}dir",
-            f"{_W}bdo",
-            f"{_W}sdtContent",
-            f"{_W}sdt",
-        }
-    )
-    _DELETED = frozenset({f"{_W}del", f"{_W}moveFrom"})
-    _REVISIONS = _DELETED | {f"{_W}ins", f"{_W}moveTo"}
-    _UNSUPPORTED = frozenset(
-        {f"{_W}object", f"{_W}altChunk", f"{_M}oMath", f"{_M}oMathPara"}
-    )
-    _RUN_TEXT = {
-        f"{_W}t": None,
-        f"{_W}tab": "\t",
-        f"{_W}ptab": "\t",
-        f"{_W}br": "\n",
-        f"{_W}cr": "\n",
-        f"{_W}noBreakHyphen": "-",
-    }
     _INFORMATIONAL = frozenset(
         {
             FindingCode.EMPTY,
@@ -200,9 +177,7 @@ class DocxTextReader:
                 )
                 continue
             element = (
-                DocxTextReader._resolve(body, location.child_indexes)
-                if location.part == part
-                else None
+                resolve(body, location.child_indexes) if location.part == part else None
             )
             if element is None:
                 findings.append(
@@ -212,7 +187,7 @@ class DocxTextReader:
                         region,
                     )
                 )
-            elif reason := DocxTextReader._unreadable(element):
+            elif reason := unreadable(element):
                 findings.append(
                     DocxTextReader._finding(
                         FindingCode.SELECTION_UNSUPPORTED, reason, region
@@ -239,10 +214,7 @@ class DocxTextReader:
                 continue
             completed += 1
             notes: set[FindingCode] = set()
-            if any(
-                ancestor.tag in DocxTextReader._DELETED
-                for ancestor in element.iterancestors()
-            ):
+            if any(ancestor.tag in DELETED for ancestor in element.iterancestors()):
                 notes.add(FindingCode.REVISIONS_PRESENT)
                 text = None
             else:
@@ -276,12 +248,12 @@ class DocxTextReader:
         element: Any, excluded: frozenset[int], notes: set[FindingCode]
     ) -> str | None:
         tag = element.tag
-        if tag == f"{DocxTextReader._W}p":
-            return DocxTextReader._paragraph_text(element, excluded, notes)
-        if tag == f"{DocxTextReader._W}tbl":
-            return DocxTextReader._table_text(element, excluded, notes)
-        if tag in DocxTextReader._DRAWINGS:
-            return DocxTextReader._alt_text(element)
+        if tag == f"{W}p":
+            return paragraph_text(element, excluded, notes)
+        if tag == f"{W}tbl":
+            return table_text(element, excluded, notes)
+        if tag in DRAWINGS:
+            return alt_text(element)
         # A body-level content control or custom-XML wrapper: its blocks, one per line.
         texts = DocxTextReader._body_texts(element, excluded, notes)
         return "\n".join(texts) if texts else None
@@ -296,195 +268,31 @@ class DocxTextReader:
             tag = child.tag
             if id(child) in excluded:
                 continue
-            if tag == f"{DocxTextReader._W}p":
-                text = DocxTextReader._paragraph_text(child, excluded, notes)
+            if tag == f"{W}p":
+                text = paragraph_text(child, excluded, notes)
                 if text.strip():
                     texts.append(text)
-            elif tag == f"{DocxTextReader._W}tbl":
-                if (
-                    text := DocxTextReader._table_text(child, excluded, notes)
-                ) is not None:
+            elif tag == f"{W}tbl":
+                if (text := table_text(child, excluded, notes)) is not None:
                     texts.append(text)
-            elif tag in (
-                f"{DocxTextReader._W}sdt",
-                f"{DocxTextReader._W}sdtContent",
-                f"{DocxTextReader._W}customXml",
-            ):
+            elif tag in WRAPPERS:
                 texts.extend(DocxTextReader._body_texts(child, excluded, notes))
-            elif tag in DocxTextReader._UNSUPPORTED:
+            elif tag in UNSUPPORTED:
                 notes.add(FindingCode.UNSUPPORTED_CONTENT)
         return texts
-
-    @staticmethod
-    def _paragraph_text(
-        paragraph: Any, excluded: frozenset[int], notes: set[FindingCode]
-    ) -> str:
-        pieces: list[str] = []
-
-        def visit(node: Any) -> None:
-            for child in node:
-                tag = child.tag
-                if id(child) in excluded or not isinstance(tag, str):
-                    continue
-                if tag in DocxTextReader._REVISIONS:
-                    notes.add(FindingCode.REVISIONS_PRESENT)
-                if tag in DocxTextReader._DELETED:
-                    continue
-                if tag == f"{DocxTextReader._W}r":
-                    visit_run(child)
-                elif tag in DocxTextReader._TRANSPARENT:
-                    visit(child)
-                elif tag == f"{DocxTextReader._MC}AlternateContent":
-                    choice = child.find(f"{DocxTextReader._MC}Choice")
-                    if choice is not None:
-                        visit(choice)
-                elif tag in DocxTextReader._UNSUPPORTED:
-                    notes.add(FindingCode.UNSUPPORTED_CONTENT)
-
-        def visit_run(run: Any) -> None:
-            for child in run:
-                tag = child.tag
-                if id(child) in excluded or not isinstance(tag, str):
-                    continue
-                if tag == f"{DocxTextReader._W}t":
-                    pieces.append(child.text or "")
-                elif tag in DocxTextReader._RUN_TEXT:
-                    pieces.append(DocxTextReader._RUN_TEXT[tag] or "")
-                elif tag in DocxTextReader._DRAWINGS:
-                    if DocxTextReader._is_text_box(child):
-                        notes.add(FindingCode.TEXT_BOXES_UNREAD)
-                    elif alt := DocxTextReader._alt_text(child):
-                        pieces.append(alt)
-                elif tag == f"{DocxTextReader._MC}AlternateContent":
-                    choice = child.find(f"{DocxTextReader._MC}Choice")
-                    if choice is not None:
-                        visit_run(choice)
-                elif tag in DocxTextReader._UNSUPPORTED:
-                    notes.add(FindingCode.UNSUPPORTED_CONTENT)
-
-        visit(paragraph)
-        return "".join(pieces)
-
-    @staticmethod
-    def _table_text(
-        table: Any, excluded: frozenset[int], notes: set[FindingCode]
-    ) -> str | None:
-        lines: list[str] = []
-        for row in DocxTextReader._children(table, f"{DocxTextReader._W}tr"):
-            properties = row.find(f"{DocxTextReader._W}trPr")
-            if (
-                properties is not None
-                and properties.find(f"{DocxTextReader._W}del") is not None
-            ):
-                notes.add(FindingCode.REVISIONS_PRESENT)
-                continue
-            cells = [
-                DocxTextReader._cell_text(cell, excluded, notes)
-                for cell in DocxTextReader._children(row, f"{DocxTextReader._W}tc")
-            ]
-            if any(cell.strip() for cell in cells):
-                lines.append(" | ".join(cells))
-        return "\n".join(lines) if lines else None
-
-    @staticmethod
-    def _cell_text(cell: Any, excluded: frozenset[int], notes: set[FindingCode]) -> str:
-        """One line per cell, so each table row stays on one line."""
-        parts: list[str] = []
-        for child in DocxTextReader._children(
-            cell, f"{DocxTextReader._W}p", f"{DocxTextReader._W}tbl"
-        ):
-            text = (
-                DocxTextReader._paragraph_text(child, excluded, notes)
-                if child.tag == f"{DocxTextReader._W}p"
-                else DocxTextReader._table_text(child, excluded, notes)
-            )
-            if text is not None and text.strip():
-                parts.append(" ".join(text.split()))
-        return " ".join(parts)
-
-    @staticmethod
-    def _children(node: Any, *tags: str) -> list[Any]:
-        """Direct children with these tags, looking through content-control wrappers."""
-        found: list[Any] = []
-        for child in node:
-            if child.tag in tags:
-                found.append(child)
-            elif child.tag in (
-                f"{DocxTextReader._W}sdt",
-                f"{DocxTextReader._W}sdtContent",
-                f"{DocxTextReader._W}customXml",
-            ):
-                found.extend(DocxTextReader._children(child, *tags))
-        return found
-
-    @staticmethod
-    def _alt_text(drawing: Any) -> str | None:
-        if DocxTextReader._is_text_box(drawing):
-            return None
-        for properties in drawing.iter(f"{DocxTextReader._WP}docPr"):
-            if description := properties.get("descr"):
-                return " ".join(description.split()) or None
-        for shape in drawing.iter(
-            f"{DocxTextReader._V}shape", f"{DocxTextReader._V}rect"
-        ):
-            if description := shape.get("alt"):
-                return " ".join(description.split()) or None
-        return None
-
-    @staticmethod
-    def _is_text_box(drawing: Any) -> bool:
-        return next(drawing.iter(f"{DocxTextReader._W}txbxContent"), None) is not None
-
-    @staticmethod
-    def _unreadable(element: Any) -> str | None:
-        tag = element.tag
-        if any(
-            ancestor.tag == f"{DocxTextReader._MC}Fallback"
-            for ancestor in element.iterancestors()
-        ):
-            return (
-                "This element is an alternate representation of content read elsewhere."
-            )
-        if tag in DocxTextReader._DRAWINGS and DocxTextReader._is_text_box(element):
-            return "Text boxes are not read."
-        if (
-            tag
-            in (
-                f"{DocxTextReader._W}p",
-                f"{DocxTextReader._W}tbl",
-                f"{DocxTextReader._W}sdt",
-                f"{DocxTextReader._W}customXml",
-            )
-            or tag in DocxTextReader._DRAWINGS
-        ):
-            return None
-        return "This element's content is outside what DocxTextReader reads."
-
-    @staticmethod
-    def _resolve(body: Any, indexes: Sequence[int]) -> Any:
-        node = body
-        for index in indexes:
-            children = list(node)
-            if index >= len(children):
-                return None
-            node = children[index]
-        return node
 
     @staticmethod
     def _other_parts(document: Any, body: Any) -> set[FindingCode]:
         """Report other stories only when they hold text a caller might expect."""
         for tag in ("footnoteReference", "endnoteReference", "commentReference"):
-            if next(body.iter(f"{DocxTextReader._W}{tag}"), None) is not None:
+            if next(body.iter(f"{W}{tag}"), None) is not None:
                 return {FindingCode.OTHER_PARTS_UNREAD}
         related = document.part.related_parts
-        for reference in body.iter(
-            f"{DocxTextReader._W}headerReference", f"{DocxTextReader._W}footerReference"
-        ):
-            part = related.get(reference.get(f"{DocxTextReader._R}id"))
+        for reference in body.iter(f"{W}headerReference", f"{W}footerReference"):
+            part = related.get(reference.get(f"{R}id"))
             element = getattr(part, "element", None)
             if element is not None and any(
-                (text.text or "").strip()
-                for text in element.iter(f"{DocxTextReader._W}t")
+                (text.text or "").strip() for text in element.iter(f"{W}t")
             ):
                 return {FindingCode.OTHER_PARTS_UNREAD}
         return set()

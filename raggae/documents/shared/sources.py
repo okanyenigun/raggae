@@ -2,8 +2,8 @@
 
 from collections.abc import Sequence
 from pathlib import Path
-from .layout_analysis.models import LayoutAnalysisResult, LayoutRegion
-from .normalization.artifacts import Artifact
+from ..layout_analysis.models import LayoutAnalysisResult, LayoutRegion
+from ..normalization.artifacts import Artifact
 
 
 def as_artifact(source: Path | str | bytes | Artifact) -> Artifact:

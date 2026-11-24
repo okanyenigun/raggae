@@ -38,7 +38,7 @@ from ...layout_analysis.models import (
     LayoutRegion,
 )
 from ...normalization.artifacts import Artifact
-from ...sources import as_artifact
+from ...shared.sources import as_artifact
 
 # Parts whose pictures are outside the main body.
 _OTHER_PARTS = frozenset({"header", "footer", "footnotes", "endnotes", "comments"})

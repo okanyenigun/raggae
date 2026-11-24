@@ -33,7 +33,7 @@ from ...layout_analysis.models import (
 )
 from ...layout_analysis.utils import cell_bounds
 from ...normalization.artifacts import Artifact
-from ...sources import as_artifact
+from ...shared.sources import as_artifact
 
 
 class XlsxImageExtractor:

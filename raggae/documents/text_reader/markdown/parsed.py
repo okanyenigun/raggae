@@ -3,16 +3,13 @@
 from collections.abc import Sequence
 from pathlib import Path
 from stat import S_ISREG
-from typing import TYPE_CHECKING, get_args
+from typing import get_args
 from ..models import FindingCode, TextBlock, TextReadFinding, TextReadResult
 from ..utils.sources import prepare_source
 from ...layout_analysis.models import LayoutAnalysisResult
+from ...shared.markdown_text import inline_text, parser
 from ...normalization.artifacts import Artifact
 from ...normalization.models import TextEncoding
-
-
-if TYPE_CHECKING:
-    from markdown_it.token import Token
 
 
 class MarkdownTextReader:
@@ -75,7 +72,7 @@ class MarkdownTextReader:
             )
 
         try:
-            from markdown_it import MarkdownIt
+            markdown = parser()
         except ImportError as error:
             raise ImportError(
                 "Markdown text reading requires: pip install 'raggae[text-markdown]'"
@@ -84,12 +81,10 @@ class MarkdownTextReader:
         blocks: list[TextBlock] = []
         html_omitted = False
         try:
-            tokens = (
-                MarkdownIt("commonmark").enable(["table", "strikethrough"]).parse(text)
-            )
+            tokens = markdown.parse(text)
             for token in tokens:
                 if token.type == "inline":
-                    content = self._inline_text(token.children or [])
+                    content = inline_text(token.children or [])
                     if content is None:
                         html_omitted = True
                         continue
@@ -130,24 +125,6 @@ class MarkdownTextReader:
             blocks=tuple(blocks),
             findings=findings,
         )
-
-    @staticmethod
-    def _inline_text(tokens: Sequence["Token"]) -> str | None:
-        """Collect visible inline text; None reports unsupported raw HTML."""
-        parts: list[str] = []
-        for token in tokens:
-            if token.type == "html_inline":
-                return None
-            if token.type in ("text", "code_inline"):
-                parts.append(token.content)
-            elif token.type in ("softbreak", "hardbreak"):
-                parts.append("\n")
-            elif token.children:
-                child_text = MarkdownTextReader._inline_text(token.children)
-                if child_text is None:
-                    return None
-                parts.append(child_text)
-        return "".join(parts)
 
     def _failure(self, code: FindingCode, message: str) -> TextReadResult:
         return TextReadResult(

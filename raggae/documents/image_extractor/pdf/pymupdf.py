@@ -30,7 +30,7 @@ from ..utils import (
 )
 from ...layout_analysis.models import LayoutAnalysisResult, LayoutRegion, LayoutSurface
 from ...normalization.artifacts import Artifact
-from ...pdf_geometry import (
+from ...shared.pdf_geometry import (
     Box,
     displayed_size,
     inside,
@@ -38,7 +38,7 @@ from ...pdf_geometry import (
     user_unit,
     visible_crop,
 )
-from ...sources import as_artifact
+from ...shared.sources import as_artifact
 
 type Placement = tuple[int, Box, int, int]  # xref (0 inline), PDF-space bounds, pixels
 

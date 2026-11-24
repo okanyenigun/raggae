@@ -9,6 +9,7 @@ from pathlib import Path
 from stat import S_ISREG
 from typing import Any
 from .geometry import Box, displayed_size, inside, pdf_box, user_unit, visible_crop
+from ...shared.pdf_geometry import assemble
 from ..models import FindingCode, TextBlock, TextReadFinding, TextReadResult
 from ..utils.sources import as_artifact, failure, nothing_selected, select_regions
 from ...layout_analysis.models import (
@@ -277,7 +278,7 @@ class PdfiumTextReader:
                 )
                 continue
             completed += 1
-            content = PdfiumTextReader._assemble(characters, owners, number)
+            content = assemble(characters, owners, number)
             if not content:
                 findings.append(
                     PdfiumTextReader._finding(
@@ -296,29 +297,6 @@ class PdfiumTextReader:
 
     def _failure(self, code: FindingCode, message: str) -> TextReadResult:
         return failure(self.name, code, message)
-
-    @staticmethod
-    def _assemble(
-        characters: list[tuple[str, Box]], owners: list[list[int]], scope: int
-    ) -> str:
-        """Join a scope's characters, keeping one space or line break between them.
-
-        Whitespace (PDFium's generated or stored) and characters of other scopes
-        become a single separator; a line break wins over a space.
-        """
-        pieces: list[str] = []
-        newline = space = False
-        for (character, _), found in zip(characters, owners):
-            if character in "\r\n":
-                newline = True
-            elif character.isspace() or scope not in found:
-                space = True
-            else:
-                if pieces and (newline or space):
-                    pieces.append("\n" if newline else " ")
-                pieces.append(character)
-                newline = space = False
-        return "".join(pieces)
 
     @staticmethod
     def _finding(
